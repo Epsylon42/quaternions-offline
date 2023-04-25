@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use bevy_egui::{egui, EguiContexts, EguiPlugin};
 
-use crate::{Axis, Config, CoordinateSystem, Hand, RenderingResources};
+use crate::{Axis, Config, CoordinateSystem, Hand, QuatObjectBundle, RenderingResources};
 
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct UiSet;
@@ -10,7 +10,11 @@ struct UiPlugin;
 
 impl Plugin for UiPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems((ui, sync_objects).chain().in_set(UiSet));
+        app.add_systems(
+            (settings_ui, objects_ui, sync_objects)
+                .chain()
+                .in_set(UiSet),
+        );
     }
 }
 
@@ -43,136 +47,132 @@ impl Default for QuatObject {
     }
 }
 
-pub fn ui(
+pub fn settings_ui(mut cmd: Commands, mut ctx: EguiContexts, mut config_q: Query<&mut Config>) {
+    let mut config = config_q.single_mut();
+
+    egui::Window::new("Settings").show(ctx.ctx_mut(), |ui| {
+        if ui.button("Add object").clicked() {
+            cmd.spawn(QuatObjectBundle { ..default() });
+        }
+
+        ui.label("Coordinate System");
+        egui::Grid::new("___CoordinatesGrid")
+            .num_columns(3)
+            .show(ui, |ui| {
+                ui.label("Up");
+                ui.label("Fw");
+                ui.label("Hnd");
+                ui.end_row();
+
+                if ui.selectable_label(config.up == Axis::X, "X").clicked() {
+                    if config.forward == Axis::X {
+                        config.forward = config.up;
+                    }
+                    config.up = Axis::X;
+                }
+                if ui
+                    .selectable_label(config.forward == Axis::X, "X")
+                    .clicked()
+                {
+                    if config.up == Axis::X {
+                        config.up = config.forward;
+                    }
+                    config.forward = Axis::X;
+                }
+                if ui
+                    .selectable_label(config.hand == Hand::Left, "L")
+                    .clicked()
+                {
+                    config.hand = Hand::Left;
+                }
+                ui.end_row();
+
+                if ui.selectable_label(config.up == Axis::Y, "Y").clicked() {
+                    if config.forward == Axis::Y {
+                        config.forward = config.up;
+                    }
+                    config.up = Axis::Y;
+                }
+                if ui
+                    .selectable_label(config.forward == Axis::Y, "Y")
+                    .clicked()
+                {
+                    if config.up == Axis::Y {
+                        config.up = config.forward;
+                    }
+                    config.forward = Axis::Y;
+                }
+                if ui
+                    .selectable_label(config.hand == Hand::Right, "R")
+                    .clicked()
+                {
+                    config.hand = Hand::Right;
+                }
+                ui.end_row();
+
+                if ui.selectable_label(config.up == Axis::Z, "Z").clicked() {
+                    if config.forward == Axis::Z {
+                        config.forward = config.up;
+                    }
+                    config.up = Axis::Z;
+                }
+                if ui
+                    .selectable_label(config.forward == Axis::Z, "Z")
+                    .clicked()
+                {
+                    if config.up == Axis::Z {
+                        config.up = config.forward;
+                    }
+                    config.forward = Axis::Z;
+                }
+                ui.end_row();
+
+                if ui.selectable_label(config.up_sign < 0.0, "-").clicked() {
+                    config.up_sign *= -1.0;
+                }
+                if ui
+                    .selectable_label(config.forward_sign < 0.0, "-")
+                    .clicked()
+                {
+                    config.forward_sign *= -1.0;
+                }
+                ui.end_row();
+            });
+    });
+}
+
+pub fn objects_ui(
     mut cmd: Commands,
     mut ctx: EguiContexts,
     coord_q: Query<&CoordinateSystem>,
-    mut config_q: Query<&mut Config>,
-    mut objects: Query<(Entity, &Name, &mut QuatObject, &mut Transform)>,
+    mut objects_q: Query<(Entity, &Name, &mut QuatObject, &mut Transform, &Handle<StandardMaterial>)>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     let coord = coord_q.single();
-    let mut config = config_q.single_mut();
 
-    egui::Window::new("Quaternions").show(ctx.ctx_mut(), |ui| {
-        ui.collapsing("Settings", |ui| {
-            egui::Grid::new("___CoordinatesGrid")
-                .num_columns(3)
-                .show(ui, |ui| {
-                    ui.label("Up");
-                    ui.label("Fw");
-                    ui.label("Hnd");
-                    ui.end_row();
+    for (ent, name, mut obj, mut tf, material) in objects_q.iter_mut() {
+        egui::Window::new(name.as_str()).show(ctx.ctx_mut(), |ui| {
+            if ui.button("Delete").clicked() {
+                cmd.entity(ent).despawn_recursive();
+            }
 
-                    if ui.selectable_label(config.up == Axis::X, "X").clicked() {
-                        if config.forward == Axis::X {
-                            config.forward = config.up;
-                        }
-                        config.up = Axis::X;
-                    }
-                    if ui
-                        .selectable_label(config.forward == Axis::X, "X")
-                        .clicked()
-                    {
-                        if config.up == Axis::X {
-                            config.up = config.forward;
-                        }
-                        config.forward = Axis::X;
-                    }
-                    if ui
-                        .selectable_label(config.hand == Hand::Left, "L")
-                        .clicked()
-                    {
-                        config.hand = Hand::Left;
-                    }
-                    ui.end_row();
+            let material = materials.get_mut(material).unwrap();
+            let mut rgb = match material.base_color.as_linear_rgba_f32() {
+                [r, g, b, _] => [r, g, b]
+            };
 
-                    if ui.selectable_label(config.up == Axis::Y, "Y").clicked() {
-                        if config.forward == Axis::Y {
-                            config.forward = config.up;
-                        }
-                        config.up = Axis::Y;
-                    }
-                    if ui
-                        .selectable_label(config.forward == Axis::Y, "Y")
-                        .clicked()
-                    {
-                        if config.up == Axis::Y {
-                            config.up = config.forward;
-                        }
-                        config.forward = Axis::Y;
-                    }
-                    if ui
-                        .selectable_label(config.hand == Hand::Right, "R")
-                        .clicked()
-                    {
-                        config.hand = Hand::Right;
-                    }
-                    ui.end_row();
-
-                    if ui.selectable_label(config.up == Axis::Z, "Z").clicked() {
-                        if config.forward == Axis::Z {
-                            config.forward = config.up;
-                        }
-                        config.up = Axis::Z;
-                    }
-                    if ui
-                        .selectable_label(config.forward == Axis::Z, "Z")
-                        .clicked()
-                    {
-                        if config.up == Axis::Z {
-                            config.up = config.forward;
-                        }
-                        config.forward = Axis::Z;
-                    }
-                    ui.end_row();
-
-                    if ui.selectable_label(config.up_sign < 0.0, "-").clicked() {
-                        config.up_sign *= -1.0;
-                    }
-                    if ui
-                        .selectable_label(config.forward_sign < 0.0, "-")
-                        .clicked()
-                    {
-                        config.forward_sign *= -1.0;
-                    }
-                    ui.end_row();
-                });
-
-            ui.collapsing("Up Axis", |ui| {
-                for axis in Axis::all() {
-                    if ui
-                        .selectable_label(config.up == axis, axis.name())
-                        .clicked()
-                    {
-                        config.up = axis;
-                    }
+            ui.horizontal(|ui| {
+                ui.label("Color: ");
+                if egui::color_picker::color_edit_button_rgb(ui, &mut rgb).changed() {
+                    material.base_color = Color::rgb_linear(rgb[0], rgb[1], rgb[2]);
                 }
             });
+
+            display_quaternion(ui, ent, &*coord, &mut obj, tf.reborrow());
+            display_euler(ui, ent, &*coord, &mut obj, tf.reborrow());
+            display_look(ui, ent, &*coord, &mut obj, tf.reborrow());
         });
-        egui::CollapsingHeader::new("Objects")
-            .default_open(true)
-            .show(ui, |ui| {
-                let mut i = 0;
-                for (ent, name, mut obj, mut tf) in objects.iter_mut() {
-                    egui::CollapsingHeader::new(name.as_str())
-                        .default_open(i == 0)
-                        .show(ui, |ui| {
-                            display_quaternion(ui, ent, &*coord, &mut obj, tf.reborrow());
-                            display_euler(ui, ent, &*coord, &mut obj, tf.reborrow());
-                            display_look(ui, ent, &*coord, &mut obj, tf.reborrow());
-                        });
-
-                    i += 1;
-                }
-                if ui.button("Add").clicked() {
-                    cmd.spawn((
-                        Name::new(format!("Quat{}", i)),
-                        SpatialBundle::default(),
-                        QuatObject::default(),
-                    ));
-                }
-            });
-    });
+    }
 }
 
 fn display_quaternion(
@@ -308,11 +308,12 @@ fn display_look(
             });
         if ui.button("Apply").clicked() {
             tf.look_to(
-                coord.user2internal * Vec3::new(
-                    obj.look[0].parse().unwrap(),
-                    obj.look[1].parse().unwrap(),
-                    obj.look[2].parse().unwrap(),
-                ),
+                coord.user2internal
+                    * Vec3::new(
+                        obj.look[0].parse().unwrap(),
+                        obj.look[1].parse().unwrap(),
+                        obj.look[2].parse().unwrap(),
+                    ),
                 obj.up.to_vec(),
             );
         }
@@ -331,11 +332,15 @@ fn sync_objects(
     mut cmd: Commands,
     coord_q: Query<Ref<CoordinateSystem>>,
     res: Res<RenderingResources>,
-    mut objects_q: Query<(Entity, &mut QuatObject, Ref<Transform>, Option<&Children>)>,
+    mut objects_q: Query<(&mut QuatObject, Ref<Transform>)>,
+    new_objects_q: Query<Entity, (With<QuatObject>, Without<Name>)>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     let coord = coord_q.single();
 
-    for (ent, mut obj, tf, children) in objects_q.iter_mut() {
+    let mut i = 0;
+    for (mut obj, tf) in objects_q.iter_mut() {
+        i += 1;
         if !tf.is_changed() && !coord.is_changed() {
             continue;
         }
@@ -356,13 +361,21 @@ fn sync_objects(
         obj.look[0] = look.x.to_string();
         obj.look[1] = look.y.to_string();
         obj.look[2] = look.z.to_string();
+    }
 
-        if children.map(|c| c.is_empty()).unwrap_or(true) {
-            cmd.spawn(SceneBundle {
-                scene: res.obj.clone(),
+    for ent in new_objects_q.iter() {
+        cmd.entity(ent).insert((
+            MaterialMeshBundle {
+                mesh: res.obj_mesh.clone(),
+                material: materials.add(StandardMaterial {
+                    depth_bias: -0.5,
+                    unlit: true,
+                    ..Color::BLACK.into()
+                }),
                 ..default()
-            })
-            .set_parent(ent);
-        }
+            },
+            Name::new(format!("Quat{}", i)),
+        ));
+        i += 1;
     }
 }

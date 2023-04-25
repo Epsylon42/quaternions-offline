@@ -1,4 +1,4 @@
-use bevy::{prelude::*, utils::HashMap};
+use bevy::prelude::*;
 
 mod camera;
 mod mesh;
@@ -8,6 +8,7 @@ fn main() {
     App::new()
         .insert_resource(ClearColor(Color::ANTIQUE_WHITE))
         .add_plugins(DefaultPlugins)
+        .add_plugin(bevy_obj::ObjPlugin)
         .add_plugins(ui::UiPlugins)
         .add_system(camera::pan_orbit_camera)
         .add_startup_system(setup)
@@ -35,29 +36,8 @@ impl Axis {
         }
     }
 
-    fn to_vec_signed(self, neg: bool) -> Vec3 {
-        self.to_vec() * if neg { -1.0 } else { 1.0 }
-    }
-
-    fn cross(self, other: Axis) -> Axis {
-        match (self, other) {
-            (Axis::X, Axis::Y) | (Axis::Y, Axis::X) => Axis::Z,
-            (Axis::Y, Axis::Z) | (Axis::Z, Axis::Y) => Axis::X,
-            (Axis::Z, Axis::X) | (Axis::X, Axis::Z) => Axis::Y,
-            _ => panic!("Passed two equal axes to cross"),
-        }
-    }
-
     fn all() -> [Self; 3] {
         [Axis::X, Axis::Y, Axis::Z]
-    }
-
-    fn name(self) -> &'static str {
-        match self {
-            Axis::X => "X",
-            Axis::Y => "Y",
-            Axis::Z => "Z",
-        }
     }
 }
 
@@ -103,13 +83,20 @@ pub struct CoordinateSystem {
     internal2user: Mat3,
 }
 
+#[derive(Bundle, Default)]
+struct QuatObjectBundle {
+    spatial: SpatialBundle,
+    quat_obj: ui::QuatObject,
+}
+
 #[derive(Resource)]
+#[allow(dead_code)]
 struct RenderingResources {
     red: Handle<StandardMaterial>,
     green: Handle<StandardMaterial>,
     blue: Handle<StandardMaterial>,
 
-    obj: Handle<Scene>,
+    obj_mesh: Handle<Mesh>,
 }
 
 fn setup(
@@ -154,19 +141,22 @@ fn setup(
             ..Color::BLUE.into()
         }),
 
-        obj: assets.load("arrow.gltf#Scene0"),
+        //obj_mat: materials.add(StandardMaterial {
+            //unlit: true,
+            //depth_bias: -0.5,
+            //..Color::BLACK.into()
+        //}),
+        obj_mesh: assets.load("arrow.obj"),
     };
 
-    let main_plane = cmd
-        .spawn((
-            MainPlane,
-            MaterialMeshBundle {
-                mesh: mesh.clone(),
-                material: material.clone(),
-                ..default()
-            },
-        ))
-        .id();
+    cmd.spawn((
+        MainPlane,
+        MaterialMeshBundle {
+            mesh: mesh.clone(),
+            material: material.clone(),
+            ..default()
+        },
+    ));
 
     let axis_mesh = meshes.add(
         shape::Cylinder {
@@ -234,11 +224,7 @@ fn setup(
 
     cmd.spawn(Config::default());
 
-    cmd.spawn((
-        Name::new("Quat0"),
-        SpatialBundle::default(),
-        ui::QuatObject::default(),
-    ));
+    cmd.spawn(QuatObjectBundle::default());
 }
 
 fn config_changed(config_q: Query<Entity, Changed<Config>>) -> bool {
@@ -279,8 +265,6 @@ fn sync_axes(
 
     coord.user2internal = to_internal_basis * to_user_basis.transpose();
     coord.internal2user = coord.user2internal.transpose();
-
-    dbg!(coord.user2internal);
 
     for axis in Axis::all() {
         let mut tf = axes_q.get_mut(coord.entities[axis as usize]).unwrap();
