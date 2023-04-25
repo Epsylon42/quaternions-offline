@@ -1,4 +1,6 @@
 use bevy::prelude::*;
+
+#[cfg(feature = "text_mesh")]
 use bevy_text_mesh::prelude::*;
 
 mod camera;
@@ -6,21 +8,30 @@ mod mesh;
 mod ui;
 
 fn main() {
-    App::new()
-        .insert_resource(ClearColor(Color::ANTIQUE_WHITE))
+    let mut app = App::new();
+    app.insert_resource(ClearColor(Color::ANTIQUE_WHITE))
         .insert_resource(AmbientLight {
             color: Color::WHITE,
             brightness: 100.0,
         })
         .add_plugin(bevy_embedded_assets::EmbeddedAssetPlugin)
-        .add_plugins(DefaultPlugins)
+        .add_plugins(DefaultPlugins.set(WindowPlugin {
+            primary_window: Some(Window {
+                fit_canvas_to_parent: true,
+                ..default()
+            }),
+            ..default()
+        }))
         .add_plugin(bevy_obj::ObjPlugin)
-        .add_plugin(bevy_text_mesh::TextMeshPlugin)
         .add_plugins(ui::UiPlugins)
         .add_system(camera::pan_orbit_camera)
         .add_startup_system(setup)
-        .add_system(sync_axes.run_if(config_changed).after(ui::UiSet))
-        .run();
+        .add_system(sync_axes.run_if(config_changed).after(ui::UiSet));
+
+    #[cfg(feature = "text_mesh")]
+    app.add_plugin(bevy_text_mesh::TextMeshPlugin);
+
+    app.run();
 }
 
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
@@ -141,6 +152,8 @@ fn setup(
         depth_bias: -1.0,
         ..Color::GRAY.into()
     });
+
+    #[cfg(feature = "text_mesh")]
     let font: Handle<TextMeshFont> = assets.load("FiraSans-Medium.ttf#mesh");
 
     let res = RenderingResources {
@@ -236,6 +249,7 @@ fn setup(
                     ..default()
                 });
 
+                #[cfg(feature = "text_mesh")]
                 cmd.spawn(SpatialBundle {
                     transform: Transform::default()
                         .looking_to(axis.to_vec(), up)
@@ -246,22 +260,20 @@ fn setup(
                     ..default()
                 })
                 .with_children(|cmd| {
-                    cmd.spawn((
-                        TextMeshBundle {
-                            transform: Transform::from_xyz(-0.025, 1.05, 0.0),
-                            text_mesh: TextMesh {
-                                text: axis.name().to_owned(),
-                                style: TextMeshStyle {
-                                    font: font.clone(),
-                                    font_size: SizeUnit::NonStandard(8.0),
-                                    color,
-                                    ..default()
-                                },
+                    cmd.spawn((TextMeshBundle {
+                        transform: Transform::from_xyz(-0.025, 1.05, 0.0),
+                        text_mesh: TextMesh {
+                            text: axis.name().to_owned(),
+                            style: TextMeshStyle {
+                                font: font.clone(),
+                                font_size: SizeUnit::NonStandard(8.0),
+                                color,
                                 ..default()
                             },
                             ..default()
                         },
-                    ));
+                        ..default()
+                    },));
                 });
             })
             .id();
