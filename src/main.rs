@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use bevy_text_mesh::prelude::*;
 
 mod camera;
 mod mesh;
@@ -7,8 +8,13 @@ mod ui;
 fn main() {
     App::new()
         .insert_resource(ClearColor(Color::ANTIQUE_WHITE))
+        .insert_resource(AmbientLight {
+            color: Color::WHITE,
+            brightness: 100.0,
+        })
         .add_plugins(DefaultPlugins)
         .add_plugin(bevy_obj::ObjPlugin)
+        .add_plugin(bevy_text_mesh::TextMeshPlugin)
         .add_plugins(ui::UiPlugins)
         .add_system(camera::pan_orbit_camera)
         .add_startup_system(setup)
@@ -35,7 +41,18 @@ impl Axis {
     fn all() -> [Self; 3] {
         [Axis::X, Axis::Y, Axis::Z]
     }
+
+    fn name(&self) -> &'static str {
+        match self {
+            Axis::X => "X",
+            Axis::Y => "Y",
+            Axis::Z => "Z",
+        }
+    }
 }
+
+#[derive(Component)]
+struct Billboarded;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Hand {
@@ -123,6 +140,7 @@ fn setup(
         depth_bias: -1.0,
         ..Color::GRAY.into()
     });
+    let font: Handle<TextMeshFont> = assets.load("FiraSans-Medium.ttf#mesh");
 
     let res = RenderingResources {
         red: materials.add(StandardMaterial {
@@ -181,7 +199,7 @@ fn setup(
         });
 
         let neg_color = match color.as_hsla_f32() {
-            [h, s, l, a] => Color::hsla(h, s / 1.5, l.sqrt().sqrt(), a)
+            [h, s, l, a] => Color::hsla(h, s / 1.5, l.sqrt().sqrt(), a),
         };
         let neg_material = materials.add(StandardMaterial {
             depth_bias: -0.5,
@@ -189,47 +207,63 @@ fn setup(
             ..neg_color.into()
         });
 
-        let ent =
-            cmd.spawn(SpatialBundle::default())
-                .with_children(|cmd| {
-                    cmd.spawn(MaterialMeshBundle {
-                        transform: Transform::default()
-                            .looking_to(axis.to_vec(), up)
-                            .mul_transform(Transform::from_xyz(0.0, 0.0, -0.5).with_rotation(
-                                Quat::from_rotation_x(-std::f32::consts::TAU / 4.0),
-                            )),
-                        mesh: axis_mesh.clone(),
-                        material: material.clone(),
-                        ..default()
-                    });
-                    cmd.spawn(MaterialMeshBundle {
-                        transform: Transform::default()
-                            .looking_to(-axis.to_vec(), up)
-                            .mul_transform(Transform::from_xyz(0.0, 0.0, -0.3)
-                                .with_scale(Vec3::new(0.4, 0.6, 0.4))
-                                .with_rotation(
-                                Quat::from_rotation_x(-std::f32::consts::TAU / 4.0),
-                            )),
-                        mesh: axis_mesh.clone(),
-                        material: neg_material,
-                        ..default()
-                    });
-                })
-                .id();
+        let ent = cmd
+            .spawn(SpatialBundle::default())
+            .with_children(|cmd| {
+                cmd.spawn(MaterialMeshBundle {
+                    transform: Transform::default()
+                        .looking_to(axis.to_vec(), up)
+                        .mul_transform(
+                            Transform::from_xyz(0.0, 0.0, -0.5)
+                                .with_rotation(Quat::from_rotation_x(-std::f32::consts::TAU / 4.0)),
+                        ),
+                    mesh: axis_mesh.clone(),
+                    material: material.clone(),
+                    ..default()
+                });
 
-        //cmd.spawn(MaterialMeshBundle {
-        //transform: Transform::from_translation(axis.to_vec()),
-        //mesh: meshes.add(
-        //shape::UVSphere {
-        //radius: 0.05,
-        //sectors: 30,
-        //stacks: 10,
-        //}
-        //.into(),
-        //),
-        //material,
-        //..default()
-        //});
+                cmd.spawn(MaterialMeshBundle {
+                    transform: Transform::default()
+                        .looking_to(-axis.to_vec(), up)
+                        .mul_transform(
+                            Transform::from_xyz(0.0, 0.0, -0.3)
+                                .with_scale(Vec3::new(0.4, 0.6, 0.4))
+                                .with_rotation(Quat::from_rotation_x(-std::f32::consts::TAU / 4.0)),
+                        ),
+                    mesh: axis_mesh.clone(),
+                    material: neg_material,
+                    ..default()
+                });
+
+                cmd.spawn(SpatialBundle {
+                    transform: Transform::default()
+                        .looking_to(axis.to_vec(), up)
+                        .mul_transform(
+                            Transform::from_xyz(0.0, 0.0, 0.0)
+                                .with_rotation(Quat::from_rotation_x(-std::f32::consts::TAU / 4.0)),
+                        ),
+                    ..default()
+                })
+                .with_children(|cmd| {
+                    cmd.spawn((
+                        TextMeshBundle {
+                            transform: Transform::from_xyz(-0.025, 1.05, 0.0),
+                            text_mesh: TextMesh {
+                                text: axis.name().to_owned(),
+                                style: TextMeshStyle {
+                                    font: font.clone(),
+                                    font_size: SizeUnit::NonStandard(8.0),
+                                    color,
+                                    ..default()
+                                },
+                                ..default()
+                            },
+                            ..default()
+                        },
+                    ));
+                });
+            })
+            .id();
 
         coord.entities[axis as usize] = ent;
     }
