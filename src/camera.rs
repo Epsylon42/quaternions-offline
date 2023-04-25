@@ -1,4 +1,4 @@
-use bevy::input::mouse::{MouseMotion, MouseWheel};
+use bevy::input::mouse::MouseMotion;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 
@@ -31,7 +31,6 @@ impl Default for PanOrbitCamera {
 pub fn pan_orbit_camera(
     window_q: Query<&Window, With<PrimaryWindow>>,
     mut ev_motion: EventReader<MouseMotion>,
-    mut ev_scroll: EventReader<MouseWheel>,
     input_mouse: Res<Input<MouseButton>>,
     mut query: Query<(&mut PanOrbitCamera, &mut Transform)>,
 ) {
@@ -39,16 +38,12 @@ pub fn pan_orbit_camera(
     let orbit_button = MouseButton::Right;
 
     let mut rotation_move = Vec2::ZERO;
-    let mut scroll = 0.0;
     let mut orbit_button_changed = false;
 
     if input_mouse.pressed(orbit_button) {
         for ev in ev_motion.iter() {
             rotation_move += ev.delta;
         }
-    }
-    for ev in ev_scroll.iter() {
-        scroll += ev.y;
     }
     if input_mouse.just_released(orbit_button) || input_mouse.just_pressed(orbit_button) {
         orbit_button_changed = true;
@@ -82,12 +77,13 @@ pub fn pan_orbit_camera(
             //let pitch = Quat::from_rotation_x(-delta_y);
             transform.rotation = yaw * transform.rotation; // rotate around global y axis
             transform.rotation = transform.rotation * pitch; // rotate around local x axis
-        } else if scroll.abs() > 0.0 {
-            any = true;
-            pan_orbit.radius -= scroll * pan_orbit.radius * 0.2;
-            // dont allow zoom to reach zero or you get stuck
-            pan_orbit.radius = f32::max(pan_orbit.radius, 0.05);
         }
+        //else if scroll.abs() > 0.0 {
+        //any = true;
+        //pan_orbit.radius -= scroll * pan_orbit.radius * 0.2;
+        //// dont allow zoom to reach zero or you get stuck
+        //pan_orbit.radius = f32::max(pan_orbit.radius, 0.05);
+        //}
 
         if any {
             // emulating parent/child to make the yaw/y-axis rotation behave like a turntable

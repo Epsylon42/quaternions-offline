@@ -12,11 +12,7 @@ fn main() {
         .add_plugins(ui::UiPlugins)
         .add_system(camera::pan_orbit_camera)
         .add_startup_system(setup)
-        .add_systems(
-            (sync_camera, sync_axes)
-                .distributive_run_if(config_changed)
-                .after(ui::UiSet),
-        )
+        .add_system(sync_axes.run_if(config_changed).after(ui::UiSet))
         .run();
 }
 
@@ -105,11 +101,15 @@ fn setup(
     mut materials: ResMut<Assets<StandardMaterial>>,
     assets: Res<AssetServer>,
 ) {
-    let radius = 4.0;
+    let radius = 3.0;
 
     cmd.spawn((
         MainCamera,
-        Camera3dBundle::default(),
+        Camera3dBundle {
+            transform: Transform::from_translation(Vec3::splat(1.0).normalize() * radius)
+                .looking_at(Vec3::ZERO, Vec3::Y),
+            ..default()
+        },
         camera::PanOrbitCamera {
             radius,
             ..default()
@@ -141,11 +141,6 @@ fn setup(
             ..Color::BLUE.into()
         }),
 
-        //obj_mat: materials.add(StandardMaterial {
-            //unlit: true,
-            //depth_bias: -0.5,
-            //..Color::BLACK.into()
-        //}),
         obj_mesh: assets.load("arrow.obj"),
     };
 
@@ -201,19 +196,19 @@ fn setup(
                 })
                 .id();
 
-        cmd.spawn(MaterialMeshBundle {
-            transform: Transform::from_translation(axis.to_vec()),
-            mesh: meshes.add(
-                shape::UVSphere {
-                    radius: 0.05,
-                    sectors: 30,
-                    stacks: 10,
-                }
-                .into(),
-            ),
-            material,
-            ..default()
-        });
+        //cmd.spawn(MaterialMeshBundle {
+        //transform: Transform::from_translation(axis.to_vec()),
+        //mesh: meshes.add(
+        //shape::UVSphere {
+        //radius: 0.05,
+        //sectors: 30,
+        //stacks: 10,
+        //}
+        //.into(),
+        //),
+        //material,
+        //..default()
+        //});
 
         coord.entities[axis as usize] = ent;
     }
@@ -229,22 +224,6 @@ fn setup(
 
 fn config_changed(config_q: Query<Entity, Changed<Config>>) -> bool {
     !config_q.is_empty()
-}
-
-fn sync_camera(
-    //config_q: Query<&Config>,
-    mut camera_q: Query<(&mut Transform, &mut camera::PanOrbitCamera), With<MainCamera>>,
-) {
-    //let config = config_q.single();
-
-    let (mut tf, mut orbit) = camera_q.single_mut();
-    orbit.up = Vec3::Y;
-
-    //orbit.up = config.up.to_vec();
-
-    tf.translation = Vec3::new(1.0, 1.0, 1.0).normalize() * orbit.radius;
-    ////camera_tf.scale = Vec3::new(-1.0, 1.0, 1.0);
-    tf.look_at(Vec3::ZERO, orbit.up);
 }
 
 fn sync_axes(

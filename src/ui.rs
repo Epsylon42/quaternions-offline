@@ -145,7 +145,13 @@ pub fn objects_ui(
     mut cmd: Commands,
     mut ctx: EguiContexts,
     coord_q: Query<&CoordinateSystem>,
-    mut objects_q: Query<(Entity, &Name, &mut QuatObject, &mut Transform, &Handle<StandardMaterial>)>,
+    mut objects_q: Query<(
+        Entity,
+        &Name,
+        &mut QuatObject,
+        &mut Transform,
+        &Handle<StandardMaterial>,
+    )>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     let coord = coord_q.single();
@@ -158,7 +164,7 @@ pub fn objects_ui(
 
             let material = materials.get_mut(material).unwrap();
             let mut rgb = match material.base_color.as_linear_rgba_f32() {
-                [r, g, b, _] => [r, g, b]
+                [r, g, b, _] => [r, g, b],
             };
 
             ui.horizontal(|ui| {
