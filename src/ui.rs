@@ -56,6 +56,10 @@ pub fn settings_ui(mut cmd: Commands, mut ctx: EguiContexts, mut config_q: Query
         }
 
         ui.label("Coordinate System");
+
+        let x_label = || egui::RichText::new("X").color(egui::Color32::RED);
+        let y_label = || egui::RichText::new("Y").color(egui::Color32::GREEN);
+        let z_label = || egui::RichText::new("Z").color(egui::Color32::from_rgb(125, 125, 255));
         egui::Grid::new("___CoordinatesGrid")
             .num_columns(3)
             .show(ui, |ui| {
@@ -64,14 +68,14 @@ pub fn settings_ui(mut cmd: Commands, mut ctx: EguiContexts, mut config_q: Query
                 ui.label("Hnd");
                 ui.end_row();
 
-                if ui.selectable_label(config.up == Axis::X, "X").clicked() {
+                if ui.selectable_label(config.up == Axis::X, x_label()).clicked() {
                     if config.forward == Axis::X {
                         config.forward = config.up;
                     }
                     config.up = Axis::X;
                 }
                 if ui
-                    .selectable_label(config.forward == Axis::X, "X")
+                    .selectable_label(config.forward == Axis::X, x_label())
                     .clicked()
                 {
                     if config.up == Axis::X {
@@ -87,14 +91,14 @@ pub fn settings_ui(mut cmd: Commands, mut ctx: EguiContexts, mut config_q: Query
                 }
                 ui.end_row();
 
-                if ui.selectable_label(config.up == Axis::Y, "Y").clicked() {
+                if ui.selectable_label(config.up == Axis::Y, y_label()).clicked() {
                     if config.forward == Axis::Y {
                         config.forward = config.up;
                     }
                     config.up = Axis::Y;
                 }
                 if ui
-                    .selectable_label(config.forward == Axis::Y, "Y")
+                    .selectable_label(config.forward == Axis::Y, y_label())
                     .clicked()
                 {
                     if config.up == Axis::Y {
@@ -110,14 +114,14 @@ pub fn settings_ui(mut cmd: Commands, mut ctx: EguiContexts, mut config_q: Query
                 }
                 ui.end_row();
 
-                if ui.selectable_label(config.up == Axis::Z, "Z").clicked() {
+                if ui.selectable_label(config.up == Axis::Z, z_label()).clicked() {
                     if config.forward == Axis::Z {
                         config.forward = config.up;
                     }
                     config.up = Axis::Z;
                 }
                 if ui
-                    .selectable_label(config.forward == Axis::Z, "Z")
+                    .selectable_label(config.forward == Axis::Z, z_label())
                     .clicked()
                 {
                     if config.up == Axis::Z {
