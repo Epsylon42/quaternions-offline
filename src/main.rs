@@ -12,6 +12,7 @@ fn main() {
             color: Color::WHITE,
             brightness: 100.0,
         })
+        .add_plugin(bevy_embedded_assets::EmbeddedAssetPlugin)
         .add_plugins(DefaultPlugins)
         .add_plugin(bevy_obj::ObjPlugin)
         .add_plugin(bevy_text_mesh::TextMeshPlugin)

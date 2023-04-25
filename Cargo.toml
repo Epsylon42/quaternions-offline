@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 bevy_egui = "0.20.3"
+bevy_embedded_assets = "0.7.0"
 bevy_obj = "0.10.1"
 bevy_text_mesh = "0.6.0"
 
@@ -14,7 +15,6 @@ bevy_text_mesh = "0.6.0"
 version = "0.10.1"
 default-features = false
 features = [
-    "dynamic_linking",
     "bevy_asset",
     "bevy_scene",
     "bevy_winit",
