@@ -180,6 +180,15 @@ fn setup(
             ..color.into()
         });
 
+        let neg_color = match color.as_hsla_f32() {
+            [h, s, l, a] => Color::hsla(h, s / 1.5, l.sqrt().sqrt(), a)
+        };
+        let neg_material = materials.add(StandardMaterial {
+            depth_bias: -0.5,
+            unlit: true,
+            ..neg_color.into()
+        });
+
         let ent =
             cmd.spawn(SpatialBundle::default())
                 .with_children(|cmd| {
@@ -191,6 +200,18 @@ fn setup(
                             )),
                         mesh: axis_mesh.clone(),
                         material: material.clone(),
+                        ..default()
+                    });
+                    cmd.spawn(MaterialMeshBundle {
+                        transform: Transform::default()
+                            .looking_to(-axis.to_vec(), up)
+                            .mul_transform(Transform::from_xyz(0.0, 0.0, -0.3)
+                                .with_scale(Vec3::new(0.4, 0.6, 0.4))
+                                .with_rotation(
+                                Quat::from_rotation_x(-std::f32::consts::TAU / 4.0),
+                            )),
+                        mesh: axis_mesh.clone(),
+                        material: neg_material,
                         ..default()
                     });
                 })
