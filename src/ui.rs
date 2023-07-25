@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use bevy_egui::{egui, EguiContexts, EguiPlugin};
+use bevy_egui::{egui, EguiClipboard, EguiContexts, EguiPlugin};
 
 use crate::{Axis, Config, CoordinateSystem, Hand, QuatObjectBundle, RenderingResources};
 
@@ -47,6 +47,20 @@ impl Default for QuatObject {
     }
 }
 
+fn clip_copy(clip: &mut EguiClipboard, data: &[String]) {
+    clip.set_contents(&data.join(","));
+}
+
+fn clip_paste(clip: &EguiClipboard, data: &mut [String]) {
+    clip.get_contents()
+        .unwrap_or_default()
+        .split(",")
+        .map(str::trim)
+        .map(String::from)
+        .zip(data)
+        .for_each(|(value, data)| *data = value);
+}
+
 pub fn settings_ui(mut cmd: Commands, mut ctx: EguiContexts, mut config_q: Query<&mut Config>) {
     let mut config = config_q.single_mut();
 
@@ -68,7 +82,10 @@ pub fn settings_ui(mut cmd: Commands, mut ctx: EguiContexts, mut config_q: Query
                 ui.label("Hnd");
                 ui.end_row();
 
-                if ui.selectable_label(config.up == Axis::X, x_label()).clicked() {
+                if ui
+                    .selectable_label(config.up == Axis::X, x_label())
+                    .clicked()
+                {
                     if config.forward == Axis::X {
                         config.forward = config.up;
                     }
@@ -91,7 +108,10 @@ pub fn settings_ui(mut cmd: Commands, mut ctx: EguiContexts, mut config_q: Query
                 }
                 ui.end_row();
 
-                if ui.selectable_label(config.up == Axis::Y, y_label()).clicked() {
+                if ui
+                    .selectable_label(config.up == Axis::Y, y_label())
+                    .clicked()
+                {
                     if config.forward == Axis::Y {
                         config.forward = config.up;
                     }
@@ -114,7 +134,10 @@ pub fn settings_ui(mut cmd: Commands, mut ctx: EguiContexts, mut config_q: Query
                 }
                 ui.end_row();
 
-                if ui.selectable_label(config.up == Axis::Z, z_label()).clicked() {
+                if ui
+                    .selectable_label(config.up == Axis::Z, z_label())
+                    .clicked()
+                {
                     if config.forward == Axis::Z {
                         config.forward = config.up;
                     }
@@ -148,6 +171,7 @@ pub fn settings_ui(mut cmd: Commands, mut ctx: EguiContexts, mut config_q: Query
 pub fn objects_ui(
     mut cmd: Commands,
     mut ctx: EguiContexts,
+    mut clip: ResMut<EguiClipboard>,
     coord_q: Query<&CoordinateSystem>,
     mut objects_q: Query<(
         Entity,
@@ -166,6 +190,11 @@ pub fn objects_ui(
                 cmd.entity(ent).despawn_recursive();
             }
 
+            if ui.button("Reset input fields").clicked() {
+                // sync_objects will set input fields to the current values
+                tf.set_changed();
+            }
+
             let material = materials.get_mut(material).unwrap();
             let mut rgb = match material.base_color.as_linear_rgba_f32() {
                 [r, g, b, _] => [r, g, b],
@@ -178,15 +207,16 @@ pub fn objects_ui(
                 }
             });
 
-            display_quaternion(ui, ent, &*coord, &mut obj, tf.reborrow());
-            display_euler(ui, ent, &*coord, &mut obj, tf.reborrow());
-            display_look(ui, ent, &*coord, &mut obj, tf.reborrow());
+            display_quaternion(ui, &mut *clip, ent, &*coord, &mut obj, tf.reborrow());
+            display_euler(ui, &mut *clip, ent, &*coord, &mut obj, tf.reborrow());
+            display_look(ui, &mut *clip, ent, &*coord, &mut obj, tf.reborrow());
         });
     }
 }
 
 fn display_quaternion(
     ui: &mut egui::Ui,
+    clip: &mut EguiClipboard,
     ent: Entity,
     coord: &CoordinateSystem,
     obj: &mut QuatObject,
@@ -236,11 +266,21 @@ fn display_quaternion(
                     ),
                 );
             }
+
+            ui.horizontal(|ui| {
+                if ui.button("Copy").clicked() {
+                    clip_copy(clip, &obj.quat);
+                }
+                if ui.button("Paste").clicked() {
+                    clip_paste(clip, &mut obj.quat);
+                }
+            });
         });
 }
 
 fn display_euler(
     ui: &mut egui::Ui,
+    clip: &mut EguiClipboard,
     ent: Entity,
     coord: &CoordinateSystem,
     obj: &mut QuatObject,
@@ -276,11 +316,21 @@ fn display_euler(
             )
             .normalize();
         }
+
+        ui.horizontal(|ui| {
+            if ui.button("Copy").clicked() {
+                clip_copy(clip, &obj.euler);
+            }
+            if ui.button("Paste").clicked() {
+                clip_paste(clip, &mut obj.euler);
+            }
+        });
     });
 }
 
 fn display_look(
     ui: &mut egui::Ui,
+    clip: &mut EguiClipboard,
     ent: Entity,
     coord: &CoordinateSystem,
     obj: &mut QuatObject,
@@ -327,6 +377,15 @@ fn display_look(
                 obj.up.to_vec(),
             );
         }
+
+        ui.horizontal(|ui| {
+            if ui.button("Copy").clicked() {
+                clip_copy(clip, &obj.look);
+            }
+            if ui.button("Paste").clicked() {
+                clip_paste(clip, &mut obj.look);
+            }
+        });
     });
 }
 
