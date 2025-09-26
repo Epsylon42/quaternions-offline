@@ -214,10 +214,7 @@ fn setup(
     }
 
     cmd.spawn(coord);
-
     cmd.insert_resource(res);
-
     cmd.spawn(geometry::Config::default());
-
-    cmd.spawn(ui::QuatObject::default());
+    cmd.spawn(ui::ArrowIO::default());
 }

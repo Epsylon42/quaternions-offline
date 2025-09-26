@@ -102,8 +102,8 @@ pub fn convert_rotation(coord: &CoordinateSystem, from: Quat) -> Quat {
 pub fn sync_axes(
     config_q: Query<Ref<Config>>,
     mut coord_q: Query<&mut CoordinateSystem>,
-    mut axes_q: Query<&mut Transform, (Without<MainPlane>, Without<ui::QuatObject>)>,
-    mut objects_q: Query<&mut Transform, With<ui::QuatObject>>,
+    mut axes_q: Query<&mut Transform, (Without<MainPlane>, Without<ui::ArrowIO>)>,
+    mut arrows_q: Query<&mut Transform, With<ui::ArrowIO>>,
 ) {
     let mut coord = coord_q.single_mut().unwrap();
     let config = config_q.single().unwrap();
@@ -132,7 +132,7 @@ pub fn sync_axes(
     }
 
     if config.keep_numerics {
-        for mut tf in objects_q.iter_mut() {
+        for mut tf in arrows_q.iter_mut() {
             let num = convert_quaternion(prev_internal2user, tf.rotation);
             tf.rotation = convert_quaternion(coord.user2internal, num);
         }
@@ -143,14 +143,14 @@ pub fn sync_objects(
     mut cmd: Commands,
     coord_q: Query<Ref<CoordinateSystem>>,
     res: Res<RenderingResources>,
-    mut objects_q: Query<(&mut ui::QuatObject, Ref<Transform>)>,
-    new_objects_q: Query<Entity, (With<ui::QuatObject>, Without<Name>)>,
+    mut arrows_q: Query<(&mut ui::ArrowIO, Ref<Transform>)>,
+    new_arrows_q: Query<Entity, (With<ui::ArrowIO>, Without<Name>)>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     let coord = coord_q.single().unwrap();
 
     let mut i = 0;
-    for (mut obj, tf) in objects_q.iter_mut() {
+    for (mut arrow, tf) in arrows_q.iter_mut() {
         i += 1;
         if !tf.is_changed() && !coord.is_changed() {
             continue;
@@ -158,30 +158,30 @@ pub fn sync_objects(
 
         let quat = convert_quaternion(coord.internal2user, tf.rotation);
 
-        obj.quat[0] = quat.w.to_string();
-        obj.quat[1] = quat.x.to_string();
-        obj.quat[2] = quat.y.to_string();
-        obj.quat[3] = quat.z.to_string();
+        arrow.quat[0] = quat.w.to_string();
+        arrow.quat[1] = quat.x.to_string();
+        arrow.quat[2] = quat.y.to_string();
+        arrow.quat[3] = quat.z.to_string();
 
         let (x, y, z) = quat.to_euler(EulerRot::XYZ);
-        obj.euler[0] = x.to_degrees().to_string();
-        obj.euler[1] = y.to_degrees().to_string();
-        obj.euler[2] = z.to_degrees().to_string();
+        arrow.euler[0] = x.to_degrees().to_string();
+        arrow.euler[1] = y.to_degrees().to_string();
+        arrow.euler[2] = z.to_degrees().to_string();
 
         let mat = Mat3::from_quat(quat).to_cols_array();
-        for (from, to) in mat.into_iter().zip(&mut obj.mat) {
+        for (from, to) in mat.into_iter().zip(&mut arrow.mat) {
             *to = from.to_string();
         }
 
         let look = coord.internal2user * (tf.rotation * Vec3::NEG_Z);
-        obj.look[0] = look.x.to_string();
-        obj.look[1] = look.y.to_string();
-        obj.look[2] = look.z.to_string();
+        arrow.look[0] = look.x.to_string();
+        arrow.look[1] = look.y.to_string();
+        arrow.look[2] = look.z.to_string();
     }
 
-    for ent in new_objects_q.iter() {
+    for ent in new_arrows_q.iter() {
         cmd.entity(ent).insert((
-            Name::new(format!("Quat{i}")),
+            Name::new(format!("Arrow {i}")),
             Mesh3d(res.obj_mesh.clone()),
             MeshMaterial3d(materials.add(StandardMaterial {
                 depth_bias: -0.5,

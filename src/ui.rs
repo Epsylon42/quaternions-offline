@@ -12,7 +12,7 @@ impl Plugin for UiPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
             EguiPrimaryContextPass,
-            (settings_ui, objects_ui).chain().in_set(UiSet),
+            (settings_ui, arrows_ui).chain().in_set(UiSet),
         );
     }
 }
@@ -29,7 +29,7 @@ impl PluginGroup for UiPlugins {
 
 #[derive(Component)]
 #[require(Transform, Visibility)]
-pub struct QuatObject {
+pub struct ArrowIO {
     pub quat: [String; 4],
     pub euler: [String; 3],
     pub look: [String; 3],
@@ -37,7 +37,7 @@ pub struct QuatObject {
     pub up: Axis,
 }
 
-impl Default for QuatObject {
+impl Default for ArrowIO {
     fn default() -> Self {
         Self {
             quat: default(),
@@ -79,7 +79,7 @@ pub fn settings_ui(mut cmd: Commands, mut ctx: EguiContexts, mut config_q: Query
 
     egui::Window::new("Settings").show(ctx, |ui| {
         if ui.button("Add object").clicked() {
-            cmd.spawn(QuatObject::default());
+            cmd.spawn(ArrowIO::default());
         }
 
         ui.label("Coordinate System");
@@ -191,15 +191,15 @@ pub fn settings_ui(mut cmd: Commands, mut ctx: EguiContexts, mut config_q: Query
     });
 }
 
-pub fn objects_ui(
+pub fn arrows_ui(
     mut cmd: Commands,
     mut ctx: EguiContexts,
     mut clip: ResMut<EguiClipboard>,
     coord_q: Query<&CoordinateSystem>,
-    mut objects_q: Query<(
+    mut arrows_q: Query<(
         Entity,
         &mut Name,
-        &mut QuatObject,
+        &mut ArrowIO,
         &mut Transform,
         &MeshMaterial3d<StandardMaterial>,
     )>,
@@ -208,7 +208,7 @@ pub fn objects_ui(
     let coord = coord_q.single().unwrap();
     let ctx = ctx.ctx_mut().unwrap();
 
-    for (ent, mut name, mut obj, mut tf, material) in objects_q.iter_mut() {
+    for (ent, mut name, mut arrow, mut tf, material) in arrows_q.iter_mut() {
         egui::Window::new(name.as_str())
             .id(egui::Id::new(ent.index()))
             .show(ctx, |ui| {
@@ -243,10 +243,10 @@ pub fn objects_ui(
                 egui::CollapsingHeader::new("Values")
                     .default_open(true)
                     .show(ui, |ui| {
-                        display_quaternion(ui, &mut *clip, ent, &*coord, &mut obj, tf.reborrow());
-                        display_matrix(ui, &mut *clip, ent, &*coord, &mut obj, tf.reborrow());
-                        display_euler(ui, &mut *clip, ent, &*coord, &mut obj, tf.reborrow());
-                        display_look(ui, &mut *clip, ent, &*coord, &mut obj, tf.reborrow());
+                        display_quaternion(ui, &mut *clip, ent, &*coord, &mut arrow, tf.reborrow());
+                        display_matrix(ui, &mut *clip, ent, &*coord, &mut arrow, tf.reborrow());
+                        display_euler(ui, &mut *clip, ent, &*coord, &mut arrow, tf.reborrow());
+                        display_look(ui, &mut *clip, ent, &*coord, &mut arrow, tf.reborrow());
                     });
             });
     }
@@ -257,7 +257,7 @@ fn display_quaternion(
     clip: &mut EguiClipboard,
     ent: Entity,
     coord: &CoordinateSystem,
-    obj: &mut QuatObject,
+    arrow: &mut ArrowIO,
     mut tf: Mut<Transform>,
 ) {
     let display_field = |ui: &mut egui::Ui, name: &'static str, buf: &mut String| {
@@ -274,19 +274,19 @@ fn display_quaternion(
         egui::Grid::new(ent.index().to_string() + "quat")
             .num_columns(2)
             .show(ui, |ui| {
-                display_field(ui, "W", &mut obj.quat[0]);
-                display_field(ui, "X", &mut obj.quat[1]);
-                display_field(ui, "Y", &mut obj.quat[2]);
-                display_field(ui, "Z", &mut obj.quat[3]);
+                display_field(ui, "W", &mut arrow.quat[0]);
+                display_field(ui, "X", &mut arrow.quat[1]);
+                display_field(ui, "Y", &mut arrow.quat[2]);
+                display_field(ui, "Z", &mut arrow.quat[3]);
             });
         if ui.button("Apply").clicked() {
             tf.rotation = convert_rotation(
                 coord,
                 Quat::from_xyzw(
-                    obj.quat[1].parse().unwrap(),
-                    obj.quat[2].parse().unwrap(),
-                    obj.quat[3].parse().unwrap(),
-                    obj.quat[0].parse().unwrap(),
+                    arrow.quat[1].parse().unwrap(),
+                    arrow.quat[2].parse().unwrap(),
+                    arrow.quat[3].parse().unwrap(),
+                    arrow.quat[0].parse().unwrap(),
                 ),
             )
             .normalize();
@@ -295,20 +295,20 @@ fn display_quaternion(
             tf.rotation = convert_rotation(
                 coord,
                 Quat::from_xyzw(
-                    obj.quat[1].parse().unwrap(),
-                    obj.quat[2].parse().unwrap(),
-                    obj.quat[3].parse().unwrap(),
-                    obj.quat[0].parse().unwrap(),
+                    arrow.quat[1].parse().unwrap(),
+                    arrow.quat[2].parse().unwrap(),
+                    arrow.quat[3].parse().unwrap(),
+                    arrow.quat[0].parse().unwrap(),
                 ),
             );
         }
 
         ui.horizontal(|ui| {
             if ui.button("Copy").clicked() {
-                clip_copy(clip, &obj.quat);
+                clip_copy(clip, &arrow.quat);
             }
             if ui.button("Paste").clicked() {
-                clip_paste(clip, &mut obj.quat);
+                clip_paste(clip, &mut arrow.quat);
             }
         });
     });
@@ -319,7 +319,7 @@ fn display_euler(
     clip: &mut EguiClipboard,
     ent: Entity,
     coord: &CoordinateSystem,
-    obj: &mut QuatObject,
+    arrow: &mut ArrowIO,
     mut tf: Mut<Transform>,
 ) {
     let display_field = |ui: &mut egui::Ui, name: &'static str, buf: &mut String| {
@@ -336,18 +336,18 @@ fn display_euler(
         egui::Grid::new(ent.index().to_string() + "euler")
             .num_columns(2)
             .show(ui, |ui| {
-                display_field(ui, "X", &mut obj.euler[0]);
-                display_field(ui, "Y", &mut obj.euler[1]);
-                display_field(ui, "Z", &mut obj.euler[2]);
+                display_field(ui, "X", &mut arrow.euler[0]);
+                display_field(ui, "Y", &mut arrow.euler[1]);
+                display_field(ui, "Z", &mut arrow.euler[2]);
             });
         if ui.button("Apply").clicked() {
             tf.rotation = convert_rotation(
                 coord,
                 Quat::from_euler(
                     EulerRot::XYZ,
-                    obj.euler[0].parse::<f32>().unwrap().to_radians(),
-                    obj.euler[1].parse::<f32>().unwrap().to_radians(),
-                    obj.euler[2].parse::<f32>().unwrap().to_radians(),
+                    arrow.euler[0].parse::<f32>().unwrap().to_radians(),
+                    arrow.euler[1].parse::<f32>().unwrap().to_radians(),
+                    arrow.euler[2].parse::<f32>().unwrap().to_radians(),
                 ),
             )
             .normalize();
@@ -355,10 +355,10 @@ fn display_euler(
 
         ui.horizontal(|ui| {
             if ui.button("Copy").clicked() {
-                clip_copy(clip, &obj.euler);
+                clip_copy(clip, &arrow.euler);
             }
             if ui.button("Paste").clicked() {
-                clip_paste(clip, &mut obj.euler);
+                clip_paste(clip, &mut arrow.euler);
             }
         });
     });
@@ -369,7 +369,7 @@ fn display_look(
     clip: &mut EguiClipboard,
     ent: Entity,
     coord: &CoordinateSystem,
-    obj: &mut QuatObject,
+    arrow: &mut ArrowIO,
     mut tf: Mut<Transform>,
 ) {
     let display_field = |ui: &mut egui::Ui, name: &'static str, buf: &mut String| {
@@ -386,19 +386,19 @@ fn display_look(
         egui::Grid::new(ent.index().to_string() + "look")
             .num_columns(2)
             .show(ui, |ui| {
-                display_field(ui, "X", &mut obj.look[0]);
-                display_field(ui, "Y", &mut obj.look[1]);
-                display_field(ui, "Z", &mut obj.look[2]);
+                display_field(ui, "X", &mut arrow.look[0]);
+                display_field(ui, "Y", &mut arrow.look[1]);
+                display_field(ui, "Z", &mut arrow.look[2]);
                 ui.label("Up");
                 ui.horizontal(|ui| {
-                    if ui.selectable_label(obj.up == Axis::X, "X").clicked() {
-                        obj.up = Axis::X;
+                    if ui.selectable_label(arrow.up == Axis::X, "X").clicked() {
+                        arrow.up = Axis::X;
                     }
-                    if ui.selectable_label(obj.up == Axis::Y, "Y").clicked() {
-                        obj.up = Axis::Y;
+                    if ui.selectable_label(arrow.up == Axis::Y, "Y").clicked() {
+                        arrow.up = Axis::Y;
                     }
-                    if ui.selectable_label(obj.up == Axis::Z, "Z").clicked() {
-                        obj.up = Axis::Z;
+                    if ui.selectable_label(arrow.up == Axis::Z, "Z").clicked() {
+                        arrow.up = Axis::Z;
                     }
                 });
             });
@@ -406,20 +406,20 @@ fn display_look(
             tf.look_to(
                 coord.user2internal
                     * Vec3::new(
-                        obj.look[0].parse().unwrap(),
-                        obj.look[1].parse().unwrap(),
-                        obj.look[2].parse().unwrap(),
+                        arrow.look[0].parse().unwrap(),
+                        arrow.look[1].parse().unwrap(),
+                        arrow.look[2].parse().unwrap(),
                     ),
-                obj.up.to_vec(),
+                arrow.up.to_vec(),
             );
         }
 
         ui.horizontal(|ui| {
             if ui.button("Copy").clicked() {
-                clip_copy(clip, &obj.look);
+                clip_copy(clip, &arrow.look);
             }
             if ui.button("Paste").clicked() {
-                clip_paste(clip, &mut obj.look);
+                clip_paste(clip, &mut arrow.look);
             }
         });
     });
@@ -430,7 +430,7 @@ fn display_matrix(
     clip: &mut EguiClipboard,
     ent: Entity,
     coord: &CoordinateSystem,
-    obj: &mut QuatObject,
+    arrow: &mut ArrowIO,
     mut tf: Mut<Transform>,
 ) {
     let display_field = |ui: &mut egui::Ui, buf: &mut String| {
@@ -447,23 +447,23 @@ fn display_matrix(
             .min_col_width(60.0)
             .max_col_width(60.0)
             .show(ui, |ui| {
-                display_field(ui, &mut obj.mat[0]);
-                display_field(ui, &mut obj.mat[1]);
-                display_field(ui, &mut obj.mat[2]);
+                display_field(ui, &mut arrow.mat[0]);
+                display_field(ui, &mut arrow.mat[1]);
+                display_field(ui, &mut arrow.mat[2]);
                 ui.end_row();
-                display_field(ui, &mut obj.mat[3]);
-                display_field(ui, &mut obj.mat[4]);
-                display_field(ui, &mut obj.mat[5]);
+                display_field(ui, &mut arrow.mat[3]);
+                display_field(ui, &mut arrow.mat[4]);
+                display_field(ui, &mut arrow.mat[5]);
                 ui.end_row();
-                display_field(ui, &mut obj.mat[6]);
-                display_field(ui, &mut obj.mat[7]);
-                display_field(ui, &mut obj.mat[8]);
+                display_field(ui, &mut arrow.mat[6]);
+                display_field(ui, &mut arrow.mat[7]);
+                display_field(ui, &mut arrow.mat[8]);
                 ui.end_row();
             });
 
         if ui.button("Apply").clicked() {
             let mut parsed = [0.0; 9];
-            for (from, to) in obj.mat.iter().zip(&mut parsed) {
+            for (from, to) in arrow.mat.iter().zip(&mut parsed) {
                 *to = from.parse::<f32>().unwrap();
             }
             tf.rotation = convert_rotation(coord, Quat::from_mat3(&Mat3::from_cols_array(&parsed)))
@@ -475,20 +475,20 @@ fn display_matrix(
             .min_col_width(60.0)
             .show(ui, |ui| {
                 if ui.button("Copy RM").clicked() {
-                    clip_copy(clip, &obj.mat);
+                    clip_copy(clip, &arrow.mat);
                 }
                 if ui.button("Copy CM").clicked() {
-                    clip_copy(clip, &transpose_mat_io(&obj.mat));
+                    clip_copy(clip, &transpose_mat_io(&arrow.mat));
                 }
                 ui.end_row();
 
                 if ui.button("Paste RM").clicked() {
-                    clip_paste(clip, &mut obj.mat);
+                    clip_paste(clip, &mut arrow.mat);
                 }
                 if ui.button("Paste CM").clicked() {
                     let mut tmp: [String; 9] = default();
                     clip_paste(clip, &mut tmp);
-                    obj.mat = transpose_mat_io(&tmp);
+                    arrow.mat = transpose_mat_io(&tmp);
                 }
                 ui.end_row();
             });
