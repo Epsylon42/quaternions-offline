@@ -1,7 +1,7 @@
-use bevy::prelude::*;
+use bevy::{asset::RenderAssetUsages, prelude::*};
 
 pub fn create_plane_mesh() -> Mesh {
-    let mut mesh = Mesh::new(bevy::render::render_resource::PrimitiveTopology::LineList);
+    let mut mesh = Mesh::new(bevy::render::render_resource::PrimitiveTopology::LineList, RenderAssetUsages::RENDER_WORLD);
 
     let positions: Vec<_> = (-5..=5)
         .flat_map(|x| (-5..=5).map(move |y| Vec3::new(x as f32, 0.0, y as f32) / 5.0))
@@ -24,7 +24,7 @@ pub fn create_plane_mesh() -> Mesh {
         }
     }
 
-    mesh.set_indices(Some(bevy::render::mesh::Indices::U16(indices)));
+    mesh.insert_indices(bevy::render::mesh::Indices::U16(indices));
 
     mesh
 }

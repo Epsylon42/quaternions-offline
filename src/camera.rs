@@ -31,7 +31,7 @@ impl Default for PanOrbitCamera {
 pub fn pan_orbit_camera(
     window_q: Query<&Window, With<PrimaryWindow>>,
     mut ev_motion: EventReader<MouseMotion>,
-    input_mouse: Res<Input<MouseButton>>,
+    input_mouse: Res<ButtonInput<MouseButton>>,
     mut query: Query<(&mut PanOrbitCamera, &mut Transform)>,
 ) {
     // change input mapping for orbit and panning here
@@ -41,7 +41,7 @@ pub fn pan_orbit_camera(
     let mut orbit_button_changed = false;
 
     if input_mouse.pressed(orbit_button) {
-        for ev in ev_motion.iter() {
+        for ev in ev_motion.read() {
             rotation_move += ev.delta;
         }
     }
@@ -101,7 +101,7 @@ pub fn pan_orbit_camera(
 }
 
 fn get_primary_window_size(windows: &Query<&Window, With<PrimaryWindow>>) -> Vec2 {
-    let window = windows.get_single().unwrap();
+    let window = windows.single().unwrap();
     let window = Vec2::new(window.width() as f32, window.height() as f32);
     window
 }
