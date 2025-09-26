@@ -246,7 +246,7 @@ pub fn arrows_ui(
                         display_quaternion(ui, &mut *clip, ent, &*coord, &mut arrow, tf.reborrow());
                         display_matrix(ui, &mut *clip, ent, &*coord, &mut arrow, tf.reborrow());
                         display_euler(ui, &mut *clip, ent, &*coord, &mut arrow, tf.reborrow());
-                        display_look(ui, &mut *clip, ent, &*coord, &mut arrow, tf.reborrow());
+                        // display_look(ui, &mut *clip, ent, &*coord, &mut arrow, tf.reborrow());
                     });
             });
     }
