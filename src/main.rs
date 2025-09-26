@@ -5,6 +5,7 @@ use bevy_rich_text3d as text3d;
 mod camera;
 mod mesh;
 mod ui;
+mod geometry;
 
 fn main() {
     let mut app = App::new();
@@ -33,88 +34,20 @@ fn main() {
         })
         .add_plugins(bevy_obj::ObjPlugin::default())
         .add_plugins(ui::UiPlugins)
+        .add_plugins(geometry::GeometryPlugin)
         .add_systems(Startup, setup)
         .add_systems(Update, camera::pan_orbit_camera)
-        .add_systems(Update, sync_axes.run_if(config_changed).after(ui::UiSet))
         ;
 
 
     app.run();
 }
 
-#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
-enum Axis {
-    X,
-    Y,
-    Z,
-}
-
-impl Axis {
-    fn to_vec(self) -> Vec3 {
-        match self {
-            Axis::X => Vec3::X,
-            Axis::Y => Vec3::Y,
-            Axis::Z => Vec3::Z,
-        }
-    }
-
-    fn all() -> [Self; 3] {
-        [Axis::X, Axis::Y, Axis::Z]
-    }
-
-    fn name(&self) -> &'static str {
-        match self {
-            Axis::X => "X",
-            Axis::Y => "Y",
-            Axis::Z => "Z",
-        }
-    }
-}
-
 #[derive(Component)]
 struct Billboarded;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Hand {
-    Left,
-    Right,
-}
-
-#[derive(Component, Clone, Copy)]
-pub struct Config {
-    up: Axis,
-    forward: Axis,
-    up_sign: f32,
-    forward_sign: f32,
-    hand: Hand,
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            up: Axis::Y,
-            up_sign: 1.0,
-            forward: Axis::Z,
-            forward_sign: -1.0,
-            hand: Hand::Right,
-        }
-    }
-}
-
-#[derive(Component)]
-struct MainPlane;
-
 #[derive(Component)]
 struct MainCamera;
-
-#[derive(Component)]
-pub struct CoordinateSystem {
-    /// Map<Axis, Entity>
-    entities: [Entity; 3],
-
-    user2internal: Mat3,
-    internal2user: Mat3,
-}
 
 #[derive(Resource)]
 #[allow(dead_code)]
@@ -177,23 +110,23 @@ fn setup(
 
 
     cmd.spawn((
-        MainPlane,
+        geometry::MainPlane,
         Mesh3d(mesh.clone()),
         MeshMaterial3d(material.clone())
     ));
 
     let axis_mesh = meshes.add(Cylinder::new(0.012, 1.0).mesh().resolution(10).segments(1));
 
-    let mut coord = CoordinateSystem {
+    let mut coord = geometry::CoordinateSystem {
         entities: [Entity::PLACEHOLDER; 3],
         user2internal: Mat3::IDENTITY,
         internal2user: Mat3::IDENTITY,
     };
 
     for (axis, color, up) in [
-        (Axis::X, Color::from(pallette::RED), Vec3::Y),
-        (Axis::Y, Color::from(pallette::GREEN), Vec3::Z),
-        (Axis::Z, Color::from(pallette::BLUE), Vec3::Y),
+        (geometry::Axis::X, Color::from(pallette::RED), Vec3::Y),
+        (geometry::Axis::Y, Color::from(pallette::GREEN), Vec3::Z),
+        (geometry::Axis::Z, Color::from(pallette::BLUE), Vec3::Y),
     ] {
         let material = materials.add(StandardMaterial {
             base_color: color,
@@ -284,38 +217,7 @@ fn setup(
 
     cmd.insert_resource(res);
 
-    cmd.spawn(Config::default());
+    cmd.spawn(geometry::Config::default());
 
     cmd.spawn(ui::QuatObject::default());
-}
-
-fn config_changed(config_q: Query<Entity, Changed<Config>>) -> bool {
-    !config_q.is_empty()
-}
-
-fn sync_axes(
-    config_q: Query<&Config>,
-    mut coord_q: Query<&mut CoordinateSystem>,
-    mut axes_q: Query<&mut Transform, Without<MainPlane>>,
-) {
-    let mut coord = coord_q.single_mut().unwrap();
-    let config = config_q.single().unwrap();
-
-    let forward_direction = config.forward.to_vec() * config.forward_sign;
-    let up_direction = config.up.to_vec() * config.up_sign;
-    let side_direction =
-        forward_direction.cross(up_direction) * if config.hand == Hand::Left { -1.0 } else { 1.0 };
-
-    let to_internal_basis = Mat3::from_cols(Vec3::X, Vec3::Y, Vec3::NEG_Z);
-    let to_user_basis = Mat3::from_cols(side_direction, up_direction, forward_direction);
-
-    coord.user2internal = to_internal_basis * to_user_basis.transpose();
-    coord.internal2user = coord.user2internal.transpose();
-
-    for axis in Axis::all() {
-        let mut tf = axes_q.get_mut(coord.entities[axis as usize]).unwrap();
-
-        let axis = axis.to_vec();
-        tf.rotation = Quat::from_rotation_arc(axis, coord.user2internal * axis);
-    }
 }

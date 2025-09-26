@@ -1,7 +1,7 @@
 use bevy::prelude::*;
-use bevy_egui::{egui, EguiClipboard, EguiContexts, EguiPlugin, EguiPrimaryContextPass};
+use bevy_egui::{EguiClipboard, EguiContexts, EguiPlugin, EguiPrimaryContextPass, egui};
 
-use crate::{Axis, Config, CoordinateSystem, Hand, RenderingResources};
+use crate::geometry::{Axis, Config, CoordinateSystem, Hand, convert_rotation};
 
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct UiSet;
@@ -12,9 +12,7 @@ impl Plugin for UiPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
             EguiPrimaryContextPass,
-            (settings_ui, objects_ui, sync_objects)
-                .chain()
-                .in_set(UiSet),
+            (settings_ui, objects_ui).chain().in_set(UiSet),
         );
     }
 }
@@ -32,11 +30,11 @@ impl PluginGroup for UiPlugins {
 #[derive(Component)]
 #[require(Transform, Visibility)]
 pub struct QuatObject {
-    quat: [String; 4],
-    euler: [String; 3],
-    look: [String; 3],
-    mat: [String; 9],
-    up: Axis,
+    pub quat: [String; 4],
+    pub euler: [String; 3],
+    pub look: [String; 3],
+    pub mat: [String; 9],
+    pub up: Axis,
 }
 
 impl Default for QuatObject {
@@ -180,6 +178,16 @@ pub fn settings_ui(mut cmd: Commands, mut ctx: EguiContexts, mut config_q: Query
                 }
                 ui.end_row();
             });
+
+        ui.horizontal(|ui| {
+            let response = ui.checkbox(
+                &mut config.bypass_change_detection().keep_numerics,
+                "keep numerics",
+            );
+            if response.clicked() {
+                config.set_changed();
+            }
+        })
     });
 }
 
@@ -190,7 +198,7 @@ pub fn objects_ui(
     coord_q: Query<&CoordinateSystem>,
     mut objects_q: Query<(
         Entity,
-        &Name,
+        &mut Name,
         &mut QuatObject,
         &mut Transform,
         &MeshMaterial3d<StandardMaterial>,
@@ -200,32 +208,47 @@ pub fn objects_ui(
     let coord = coord_q.single().unwrap();
     let ctx = ctx.ctx_mut().unwrap();
 
-    for (ent, name, mut obj, mut tf, material) in objects_q.iter_mut() {
-        egui::Window::new(name.as_str()).show(ctx, |ui| {
-            if ui.button("Delete").clicked() {
-                cmd.entity(ent).despawn();
-            }
+    for (ent, mut name, mut obj, mut tf, material) in objects_q.iter_mut() {
+        egui::Window::new(name.as_str())
+            .id(egui::Id::new(ent.index()))
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    if ui.button("Delete").clicked() {
+                        cmd.entity(ent).despawn();
+                    }
 
-            if ui.button("Reset input fields").clicked() {
-                // sync_objects will set input fields to the current values
-                tf.set_changed();
-            }
+                    if ui.button("Reset input fields").clicked() {
+                        // sync_objects will set input fields to the current values
+                        tf.set_changed();
+                    }
+                });
 
-            let material = materials.get_mut(material).unwrap();
-            let mut rgb = LinearRgba::from(material.base_color).to_f32_array_no_alpha();
+                ui.collapsing("Options", |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label("Name: ");
+                        name.mutate(|name| {
+                            ui.add(egui::TextEdit::singleline(name).desired_width(100.0));
+                        });
+                    });
+                    ui.horizontal(|ui| {
+                        let material = materials.get_mut(material).unwrap();
+                        let mut rgb = LinearRgba::from(material.base_color).to_f32_array_no_alpha();
+                        ui.label("Color: ");
+                        if egui::color_picker::color_edit_button_rgb(ui, &mut rgb).changed() {
+                            material.base_color = LinearRgba::rgb(rgb[0], rgb[1], rgb[2]).into();
+                        }
+                    });
+                });
 
-            ui.horizontal(|ui| {
-                ui.label("Color: ");
-                if egui::color_picker::color_edit_button_rgb(ui, &mut rgb).changed() {
-                    material.base_color = LinearRgba::rgb(rgb[0], rgb[1], rgb[2]).into();
-                }
+                egui::CollapsingHeader::new("Values")
+                    .default_open(true)
+                    .show(ui, |ui| {
+                        display_quaternion(ui, &mut *clip, ent, &*coord, &mut obj, tf.reborrow());
+                        display_matrix(ui, &mut *clip, ent, &*coord, &mut obj, tf.reborrow());
+                        display_euler(ui, &mut *clip, ent, &*coord, &mut obj, tf.reborrow());
+                        display_look(ui, &mut *clip, ent, &*coord, &mut obj, tf.reborrow());
+                    });
             });
-
-            display_quaternion(ui, &mut *clip, ent, &*coord, &mut obj, tf.reborrow());
-            display_matrix(ui, &mut *clip, ent, &*coord, &mut obj, tf.reborrow());
-            display_euler(ui, &mut *clip, ent, &*coord, &mut obj, tf.reborrow());
-            display_look(ui, &mut *clip, ent, &*coord, &mut obj, tf.reborrow());
-        });
     }
 }
 
@@ -247,50 +270,48 @@ fn display_quaternion(
         ui.end_row();
     };
 
-    egui::CollapsingHeader::new("Quaternion")
-        .default_open(true)
-        .show(ui, |ui| {
-            egui::Grid::new(ent.index().to_string() + "quat")
-                .num_columns(2)
-                .show(ui, |ui| {
-                    display_field(ui, "W", &mut obj.quat[0]);
-                    display_field(ui, "X", &mut obj.quat[1]);
-                    display_field(ui, "Y", &mut obj.quat[2]);
-                    display_field(ui, "Z", &mut obj.quat[3]);
-                });
-            if ui.button("Apply").clicked() {
-                tf.rotation = convert_quaternion(
-                    coord.user2internal,
-                    Quat::from_xyzw(
-                        obj.quat[1].parse().unwrap(),
-                        obj.quat[2].parse().unwrap(),
-                        obj.quat[3].parse().unwrap(),
-                        obj.quat[0].parse().unwrap(),
-                    ),
-                )
-                .normalize();
-            }
-            if ui.button("Apply without normalization").clicked() {
-                tf.rotation = convert_quaternion(
-                    coord.user2internal,
-                    Quat::from_xyzw(
-                        obj.quat[1].parse().unwrap(),
-                        obj.quat[2].parse().unwrap(),
-                        obj.quat[3].parse().unwrap(),
-                        obj.quat[0].parse().unwrap(),
-                    ),
-                );
-            }
-
-            ui.horizontal(|ui| {
-                if ui.button("Copy").clicked() {
-                    clip_copy(clip, &obj.quat);
-                }
-                if ui.button("Paste").clicked() {
-                    clip_paste(clip, &mut obj.quat);
-                }
+    egui::CollapsingHeader::new("Quaternion").show(ui, |ui| {
+        egui::Grid::new(ent.index().to_string() + "quat")
+            .num_columns(2)
+            .show(ui, |ui| {
+                display_field(ui, "W", &mut obj.quat[0]);
+                display_field(ui, "X", &mut obj.quat[1]);
+                display_field(ui, "Y", &mut obj.quat[2]);
+                display_field(ui, "Z", &mut obj.quat[3]);
             });
+        if ui.button("Apply").clicked() {
+            tf.rotation = convert_rotation(
+                coord,
+                Quat::from_xyzw(
+                    obj.quat[1].parse().unwrap(),
+                    obj.quat[2].parse().unwrap(),
+                    obj.quat[3].parse().unwrap(),
+                    obj.quat[0].parse().unwrap(),
+                ),
+            )
+            .normalize();
+        }
+        if ui.button("Apply without normalization").clicked() {
+            tf.rotation = convert_rotation(
+                coord,
+                Quat::from_xyzw(
+                    obj.quat[1].parse().unwrap(),
+                    obj.quat[2].parse().unwrap(),
+                    obj.quat[3].parse().unwrap(),
+                    obj.quat[0].parse().unwrap(),
+                ),
+            );
+        }
+
+        ui.horizontal(|ui| {
+            if ui.button("Copy").clicked() {
+                clip_copy(clip, &obj.quat);
+            }
+            if ui.button("Paste").clicked() {
+                clip_paste(clip, &mut obj.quat);
+            }
         });
+    });
 }
 
 fn display_euler(
@@ -320,8 +341,8 @@ fn display_euler(
                 display_field(ui, "Z", &mut obj.euler[2]);
             });
         if ui.button("Apply").clicked() {
-            tf.rotation = convert_quaternion(
-                coord.user2internal,
+            tf.rotation = convert_rotation(
+                coord,
                 Quat::from_euler(
                     EulerRot::XYZ,
                     obj.euler[0].parse::<f32>().unwrap().to_radians(),
@@ -445,11 +466,8 @@ fn display_matrix(
             for (from, to) in obj.mat.iter().zip(&mut parsed) {
                 *to = from.parse::<f32>().unwrap();
             }
-            tf.rotation = convert_quaternion(
-                coord.user2internal,
-                Quat::from_mat3(&Mat3::from_cols_array(&parsed)),
-            )
-            .normalize();
+            tf.rotation = convert_rotation(coord, Quat::from_mat3(&Mat3::from_cols_array(&parsed)))
+                .normalize();
         }
 
         egui::Grid::new(ent.index().to_string() + "mat_io")
@@ -475,66 +493,4 @@ fn display_matrix(
                 ui.end_row();
             });
     });
-}
-
-fn convert_quaternion(mat: Mat3, mut quat: Quat) -> Quat {
-    let converted = mat * quat.xyz();
-    quat.x = converted.x;
-    quat.y = converted.y;
-    quat.z = converted.z;
-    quat
-}
-
-fn sync_objects(
-    mut cmd: Commands,
-    coord_q: Query<Ref<CoordinateSystem>>,
-    res: Res<RenderingResources>,
-    mut objects_q: Query<(&mut QuatObject, Ref<Transform>)>,
-    new_objects_q: Query<Entity, (With<QuatObject>, Without<Name>)>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-) {
-    let coord = coord_q.single().unwrap();
-
-    let mut i = 0;
-    for (mut obj, tf) in objects_q.iter_mut() {
-        i += 1;
-        if !tf.is_changed() && !coord.is_changed() {
-            continue;
-        }
-
-        let quat = convert_quaternion(coord.internal2user, tf.rotation);
-
-        obj.quat[0] = quat.w.to_string();
-        obj.quat[1] = quat.x.to_string();
-        obj.quat[2] = quat.y.to_string();
-        obj.quat[3] = quat.z.to_string();
-
-        let (x, y, z) = quat.to_euler(EulerRot::XYZ);
-        obj.euler[0] = x.to_degrees().to_string();
-        obj.euler[1] = y.to_degrees().to_string();
-        obj.euler[2] = z.to_degrees().to_string();
-
-        let mat = Mat3::from_quat(quat).to_cols_array();
-        for (from, to) in mat.into_iter().zip(&mut obj.mat) {
-            *to = from.to_string();
-        }
-
-        let look = coord.internal2user * (tf.rotation * Vec3::NEG_Z);
-        obj.look[0] = look.x.to_string();
-        obj.look[1] = look.y.to_string();
-        obj.look[2] = look.z.to_string();
-    }
-
-    for ent in new_objects_q.iter() {
-        cmd.entity(ent).insert((
-            Name::new(format!("Quat{i}")),
-            Mesh3d(res.obj_mesh.clone()),
-            MeshMaterial3d(materials.add(StandardMaterial {
-                depth_bias: -0.5,
-                unlit: true,
-                ..Color::BLACK.into()
-            })),
-        ));
-        i += 1;
-    }
 }
