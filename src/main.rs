@@ -117,11 +117,7 @@ fn setup(
 
     let axis_mesh = meshes.add(Cylinder::new(0.012, 1.0).mesh().resolution(10).segments(1));
 
-    let mut coord = geometry::CoordinateSystem {
-        entities: [Entity::PLACEHOLDER; 3],
-        user2internal: Mat3::IDENTITY,
-        internal2user: Mat3::IDENTITY,
-    };
+    let mut coord = geometry::CoordinateSystem::default();
 
     for (axis, color, up) in [
         (geometry::Axis::X, Color::from(pallette::RED), Vec3::Y),

@@ -60,6 +60,8 @@ pub struct Config {
     pub forward_sign: f32,
     pub hand: Hand,
 
+    pub positions_scale: f32,
+
     /// if true, changing coordinate system will preserve numeric values of the quaternion
     /// instead of its direction in the internal coordinate system
     pub keep_numerics: bool,
@@ -73,6 +75,7 @@ impl Default for Config {
             forward: Axis::Z,
             forward_sign: -1.0,
             hand: Hand::Right,
+            positions_scale: 1.0,
             keep_numerics: false,
         }
     }
@@ -85,6 +88,18 @@ pub struct CoordinateSystem {
 
     pub user2internal: Mat3,
     pub internal2user: Mat3,
+    pub positions_scale: f32,
+}
+
+impl Default for CoordinateSystem {
+    fn default() -> Self {
+        Self {
+            entities: [Entity::PLACEHOLDER; 3],
+            user2internal: Mat3::IDENTITY,
+            internal2user: Mat3::IDENTITY,
+            positions_scale: 1.0,
+        }
+    }
 }
 
 fn convert_quaternion(mat: Mat3, mut quat: Quat) -> Quat {
@@ -95,8 +110,16 @@ fn convert_quaternion(mat: Mat3, mut quat: Quat) -> Quat {
     quat
 }
 
-pub fn convert_rotation(coord: &CoordinateSystem, from: Quat) -> Quat {
+fn convert_position(mat: Mat3, pos: Vec3) -> Vec3 {
+    mat * pos
+}
+
+pub fn prepare_rotation(coord: &CoordinateSystem, from: Quat) -> Quat {
     convert_quaternion(coord.user2internal, from)
+}
+
+pub fn prepare_position(coord: &CoordinateSystem, from: Vec3) -> Vec3 {
+    convert_position(coord.user2internal, from) * coord.positions_scale
 }
 
 pub fn sync_axes(
@@ -120,7 +143,9 @@ pub fn sync_axes(
     let to_user_basis = Mat3::from_cols(side_direction, up_direction, forward_direction);
 
     let prev_internal2user = coord.internal2user;
+    let prev_scale = coord.positions_scale;
 
+    coord.positions_scale = config.positions_scale;
     coord.user2internal = to_internal_basis * to_user_basis.transpose();
     coord.internal2user = coord.user2internal.transpose();
 
@@ -133,8 +158,10 @@ pub fn sync_axes(
 
     if config.keep_numerics {
         for mut tf in arrows_q.iter_mut() {
-            let num = convert_quaternion(prev_internal2user, tf.rotation);
-            tf.rotation = convert_quaternion(coord.user2internal, num);
+            let num_rot = convert_quaternion(prev_internal2user, tf.rotation);
+            let num_pos = convert_position(prev_internal2user, tf.translation) / prev_scale;
+            tf.rotation = convert_quaternion(coord.user2internal, num_rot);
+            tf.translation = convert_position(coord.user2internal, num_pos) * coord.positions_scale;
         }
     }
 }
@@ -156,8 +183,12 @@ pub fn sync_objects(
             continue;
         }
 
-        let quat = convert_quaternion(coord.internal2user, tf.rotation);
+        let pos = coord.internal2user * tf.translation / coord.positions_scale;
+        arrow.pos[0] = pos.x.to_string();
+        arrow.pos[1] = pos.y.to_string();
+        arrow.pos[2] = pos.z.to_string();
 
+        let quat = convert_quaternion(coord.internal2user, tf.rotation);
         arrow.quat[0] = quat.w.to_string();
         arrow.quat[1] = quat.x.to_string();
         arrow.quat[2] = quat.y.to_string();
@@ -173,6 +204,7 @@ pub fn sync_objects(
             *to = from.to_string();
         }
 
+        // TODO: take position into account
         let look = coord.internal2user * (tf.rotation * Vec3::NEG_Z);
         arrow.look[0] = look.x.to_string();
         arrow.look[1] = look.y.to_string();

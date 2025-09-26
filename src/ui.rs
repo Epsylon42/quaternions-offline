@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use bevy_egui::{EguiClipboard, EguiContexts, EguiPlugin, EguiPrimaryContextPass, egui};
 
-use crate::geometry::{Axis, Config, CoordinateSystem, Hand, convert_rotation};
+use crate::geometry::{Axis, Config, CoordinateSystem, Hand, prepare_position, prepare_rotation};
 
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct UiSet;
@@ -30,6 +30,7 @@ impl PluginGroup for UiPlugins {
 #[derive(Component)]
 #[require(Transform, Visibility)]
 pub struct ArrowIO {
+    pub pos: [String; 3],
     pub quat: [String; 4],
     pub euler: [String; 3],
     pub look: [String; 3],
@@ -40,6 +41,7 @@ pub struct ArrowIO {
 impl Default for ArrowIO {
     fn default() -> Self {
         Self {
+            pos: default(),
             quat: default(),
             euler: default(),
             look: default(),
@@ -187,6 +189,17 @@ pub fn settings_ui(mut cmd: Commands, mut ctx: EguiContexts, mut config_q: Query
             if response.clicked() {
                 config.set_changed();
             }
+        });
+
+        ui.horizontal(|ui| {
+            ui.label("pos scale");
+            let widget = egui::DragValue::new(&mut config.bypass_change_detection().positions_scale)
+                .range(0.01..=f32::INFINITY)
+                .speed(0.01);
+            let response = ui.add(widget);
+            if response.changed() {
+                config.set_changed();
+            }
         })
     });
 }
@@ -243,6 +256,7 @@ pub fn arrows_ui(
                 egui::CollapsingHeader::new("Values")
                     .default_open(true)
                     .show(ui, |ui| {
+                        display_position(ui, &mut *clip, ent, &*coord, &mut arrow, tf.reborrow());
                         display_quaternion(ui, &mut *clip, ent, &*coord, &mut arrow, tf.reborrow());
                         display_matrix(ui, &mut *clip, ent, &*coord, &mut arrow, tf.reborrow());
                         display_euler(ui, &mut *clip, ent, &*coord, &mut arrow, tf.reborrow());
@@ -250,6 +264,51 @@ pub fn arrows_ui(
                     });
             });
     }
+}
+
+fn display_position(
+    ui: &mut egui::Ui,
+    clip: &mut EguiClipboard,
+    _ent: Entity,
+    coord: &CoordinateSystem,
+    arrow: &mut ArrowIO,
+    mut tf: Mut<Transform>,
+) {
+    let display_field = |ui: &mut egui::Ui, name: &'static str, buf: &mut String| {
+        ui.label(name);
+        let widget = egui::TextEdit::singleline(buf).desired_width(100.0);
+        let response = ui.add(widget);
+        if response.lost_focus() {
+            *buf = buf.parse().unwrap_or(0.0).to_string();
+        }
+        ui.end_row();
+    };
+
+    ui.collapsing("Position", |ui| {
+        display_field(ui, "X", &mut arrow.pos[0]);
+        display_field(ui, "Y", &mut arrow.pos[1]);
+        display_field(ui, "Z", &mut arrow.pos[2]);
+
+        if ui.button("Apply").clicked() {
+            tf.translation = prepare_position(
+                coord,
+                Vec3::new(
+                    arrow.pos[0].parse().unwrap(),
+                    arrow.pos[1].parse().unwrap(),
+                    arrow.pos[2].parse().unwrap(),
+                ),
+            );
+        }
+
+        ui.horizontal(|ui| {
+            if ui.button("Copy").clicked() {
+                clip_copy(clip, &arrow.pos);
+            }
+            if ui.button("Paste").clicked() {
+                clip_paste(clip, &mut arrow.pos);
+            }
+        });
+    });
 }
 
 fn display_quaternion(
@@ -270,7 +329,7 @@ fn display_quaternion(
         ui.end_row();
     };
 
-    egui::CollapsingHeader::new("Quaternion").show(ui, |ui| {
+    ui.collapsing("Quaternion", |ui| {
         egui::Grid::new(ent.index().to_string() + "quat")
             .num_columns(2)
             .show(ui, |ui| {
@@ -280,7 +339,7 @@ fn display_quaternion(
                 display_field(ui, "Z", &mut arrow.quat[3]);
             });
         if ui.button("Apply").clicked() {
-            tf.rotation = convert_rotation(
+            tf.rotation = prepare_rotation(
                 coord,
                 Quat::from_xyzw(
                     arrow.quat[1].parse().unwrap(),
@@ -292,7 +351,7 @@ fn display_quaternion(
             .normalize();
         }
         if ui.button("Apply without normalization").clicked() {
-            tf.rotation = convert_rotation(
+            tf.rotation = prepare_rotation(
                 coord,
                 Quat::from_xyzw(
                     arrow.quat[1].parse().unwrap(),
@@ -341,7 +400,7 @@ fn display_euler(
                 display_field(ui, "Z", &mut arrow.euler[2]);
             });
         if ui.button("Apply").clicked() {
-            tf.rotation = convert_rotation(
+            tf.rotation = prepare_rotation(
                 coord,
                 Quat::from_euler(
                     EulerRot::XYZ,
@@ -466,7 +525,7 @@ fn display_matrix(
             for (from, to) in arrow.mat.iter().zip(&mut parsed) {
                 *to = from.parse::<f32>().unwrap();
             }
-            tf.rotation = convert_rotation(coord, Quat::from_mat3(&Mat3::from_cols_array(&parsed)))
+            tf.rotation = prepare_rotation(coord, Quat::from_mat3(&Mat3::from_cols_array(&parsed)))
                 .normalize();
         }
 
