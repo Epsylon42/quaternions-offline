@@ -30,9 +30,9 @@ impl PluginGroup for UiPlugins {
 #[derive(Component)]
 #[require(Transform, Visibility)]
 pub struct ArrowIO {
-    pub pos: [String; 3],
+    pub pos: Vec3,
     pub quat: [String; 4],
-    pub euler: [String; 3],
+    pub euler: Vec3,
     pub look: [String; 3],
     pub mat: [String; 9],
     pub up: Axis,
@@ -59,10 +59,28 @@ fn clip_paste(clip: &mut EguiClipboard, data: &mut [String]) {
     clip.get_text()
         .unwrap_or_default()
         .split(",")
+        .chain(std::iter::repeat("0"))
         .map(str::trim)
         .map(String::from)
         .zip(data)
         .for_each(|(value, data)| *data = value);
+}
+
+fn clip_copy_vec3(clip: &mut EguiClipboard, data: &Vec3) {
+    let strings: Vec<_> = data.to_array().into_iter().map(|a| a.to_string()).collect();
+
+    clip_copy(clip, &strings);
+}
+
+fn clip_paste_vec3(clip: &mut EguiClipboard, data: &mut Vec3) {
+    let mut buf: [String; 3] = default();
+    clip_paste(clip, &mut buf);
+
+    let mut parsed = [0.0; 3];
+    for (from, to) in buf.into_iter().zip(&mut parsed) {
+        *to = from.parse().unwrap_or_default();
+    }
+    *data = Vec3::from_array(parsed);
 }
 
 fn transpose_mat_io(from: &[String; 9]) -> [String; 9] {
@@ -74,6 +92,10 @@ fn transpose_mat_io(from: &[String; 9]) -> [String; 9] {
     }
     to
 }
+
+const SCROLL_SPEED_POS: f32 = 0.01;
+const SCROLL_SPEED_DEG: f32 = 0.1;
+const SCROLL_SPEED_SCALE: f32 = 0.01;
 
 pub fn settings_ui(mut cmd: Commands, mut ctx: EguiContexts, mut config_q: Query<&mut Config>) {
     let mut config = config_q.single_mut().unwrap();
@@ -193,9 +215,10 @@ pub fn settings_ui(mut cmd: Commands, mut ctx: EguiContexts, mut config_q: Query
 
         ui.horizontal(|ui| {
             ui.label("pos scale");
-            let widget = egui::DragValue::new(&mut config.bypass_change_detection().positions_scale)
-                .range(0.01..=f32::INFINITY)
-                .speed(0.01);
+            let widget =
+                egui::DragValue::new(&mut config.bypass_change_detection().positions_scale)
+                    .range(0.01..=f32::INFINITY)
+                    .speed(SCROLL_SPEED_SCALE);
             let response = ui.add(widget);
             if response.changed() {
                 config.set_changed();
@@ -274,41 +297,37 @@ fn display_position(
     arrow: &mut ArrowIO,
     mut tf: Mut<Transform>,
 ) {
-    let display_field = |ui: &mut egui::Ui, name: &'static str, buf: &mut String| {
-        ui.label(name);
-        let widget = egui::TextEdit::singleline(buf).desired_width(100.0);
-        let response = ui.add(widget);
-        if response.lost_focus() {
-            *buf = buf.parse().unwrap_or(0.0).to_string();
-        }
-        ui.end_row();
+    let display_field = |ui: &mut egui::Ui, name: &'static str, buf: &mut f32| -> bool {
+        let mut changed = false;
+        ui.horizontal(|ui| {
+            ui.label(name);
+            let widget = egui::DragValue::new(buf).speed(SCROLL_SPEED_POS);
+            changed = ui.add(widget).changed();
+        });
+        changed
     };
 
+    let mut changed = false;
     ui.collapsing("Position", |ui| {
-        display_field(ui, "X", &mut arrow.pos[0]);
-        display_field(ui, "Y", &mut arrow.pos[1]);
-        display_field(ui, "Z", &mut arrow.pos[2]);
-
-        if ui.button("Apply").clicked() {
-            tf.translation = prepare_position(
-                coord,
-                Vec3::new(
-                    arrow.pos[0].parse().unwrap(),
-                    arrow.pos[1].parse().unwrap(),
-                    arrow.pos[2].parse().unwrap(),
-                ),
-            );
-        }
+        changed |= display_field(ui, "X", &mut arrow.pos[0]);
+        changed |= display_field(ui, "Y", &mut arrow.pos[1]);
+        changed |= display_field(ui, "Z", &mut arrow.pos[2]);
 
         ui.horizontal(|ui| {
             if ui.button("Copy").clicked() {
-                clip_copy(clip, &arrow.pos);
+                clip_copy_vec3(clip, &arrow.pos);
+                changed = true;
             }
             if ui.button("Paste").clicked() {
-                clip_paste(clip, &mut arrow.pos);
+                clip_paste_vec3(clip, &mut arrow.pos);
+                changed = true;
             }
         });
     });
+
+    if changed {
+        tf.translation = prepare_position(coord, arrow.pos);
+    }
 }
 
 fn display_quaternion(
@@ -376,51 +395,41 @@ fn display_quaternion(
 fn display_euler(
     ui: &mut egui::Ui,
     clip: &mut EguiClipboard,
-    ent: Entity,
+    _ent: Entity,
     coord: &CoordinateSystem,
     arrow: &mut ArrowIO,
     mut tf: Mut<Transform>,
 ) {
-    let display_field = |ui: &mut egui::Ui, name: &'static str, buf: &mut String| {
-        ui.label(name);
-        let widget = egui::TextEdit::singleline(buf).desired_width(100.0);
-        let response = ui.add(widget);
-        if response.lost_focus() {
-            *buf = buf.parse().unwrap_or(0.0).to_string();
-        }
-        ui.end_row();
+    let display_field = |ui: &mut egui::Ui, name: &'static str, buf: &mut f32| -> bool {
+        let mut changed = false;
+        ui.horizontal(|ui| {
+            ui.label(name);
+            let widget = egui::DragValue::new(buf).speed(SCROLL_SPEED_DEG);
+            changed = ui.add(widget).changed();
+        });
+        changed
     };
 
+    let mut changed = false;
     ui.collapsing("Euler angles (XYZ)", |ui| {
-        egui::Grid::new(ent.index().to_string() + "euler")
-            .num_columns(2)
-            .show(ui, |ui| {
-                display_field(ui, "X", &mut arrow.euler[0]);
-                display_field(ui, "Y", &mut arrow.euler[1]);
-                display_field(ui, "Z", &mut arrow.euler[2]);
-            });
-        if ui.button("Apply").clicked() {
-            tf.rotation = prepare_rotation(
-                coord,
-                Quat::from_euler(
-                    EulerRot::XYZ,
-                    arrow.euler[0].parse::<f32>().unwrap().to_radians(),
-                    arrow.euler[1].parse::<f32>().unwrap().to_radians(),
-                    arrow.euler[2].parse::<f32>().unwrap().to_radians(),
-                ),
-            )
-            .normalize();
-        }
+        changed |= display_field(ui, "X", &mut arrow.euler[0]);
+        changed |= display_field(ui, "Y", &mut arrow.euler[1]);
+        changed |= display_field(ui, "Z", &mut arrow.euler[2]);
 
         ui.horizontal(|ui| {
             if ui.button("Copy").clicked() {
-                clip_copy(clip, &arrow.euler);
+                clip_copy_vec3(clip, &arrow.euler);
             }
             if ui.button("Paste").clicked() {
-                clip_paste(clip, &mut arrow.euler);
+                clip_paste_vec3(clip, &mut arrow.euler);
             }
         });
     });
+
+    if changed {
+        let Vec3 { x, y, z } = arrow.euler.map(f32::to_radians);
+        tf.rotation = prepare_rotation(coord, Quat::from_euler(EulerRot::XYZ, x, y, z)).normalize();
+    }
 }
 
 fn display_look(

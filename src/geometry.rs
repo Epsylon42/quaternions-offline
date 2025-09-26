@@ -184,9 +184,10 @@ pub fn sync_objects(
         }
 
         let pos = coord.internal2user * tf.translation / coord.positions_scale;
-        arrow.pos[0] = pos.x.to_string();
-        arrow.pos[1] = pos.y.to_string();
-        arrow.pos[2] = pos.z.to_string();
+        arrow.pos = pos;
+        // arrow.pos[0] = pos.x.to_string();
+        // arrow.pos[1] = pos.y.to_string();
+        // arrow.pos[2] = pos.z.to_string();
 
         let quat = convert_quaternion(coord.internal2user, tf.rotation);
         arrow.quat[0] = quat.w.to_string();
@@ -195,9 +196,7 @@ pub fn sync_objects(
         arrow.quat[3] = quat.z.to_string();
 
         let (x, y, z) = quat.to_euler(EulerRot::XYZ);
-        arrow.euler[0] = x.to_degrees().to_string();
-        arrow.euler[1] = y.to_degrees().to_string();
-        arrow.euler[2] = z.to_degrees().to_string();
+        arrow.euler = Vec3::new(x, y, z).map(f32::to_degrees);
 
         let mat = Mat3::from_quat(quat).to_cols_array();
         for (from, to) in mat.into_iter().zip(&mut arrow.mat) {
