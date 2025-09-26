@@ -118,7 +118,7 @@ pub fn prepare_position(coord: &CoordinateSystem, from: Vec3) -> Vec3 {
     convert_position(coord.user2internal, from) * coord.positions_scale
 }
 
-pub fn sync_axes(
+fn sync_axes(
     config_q: Query<Ref<Config>>,
     mut coord_q: Query<&mut CoordinateSystem>,
     mut axes_q: Query<&mut Transform, (Without<MainPlane>, Without<ui::ArrowIO>)>,
@@ -164,7 +164,7 @@ pub fn sync_axes(
 
 #[derive(QueryData)]
 #[query_data(mutable)]
-pub struct SyncObjectsArrowQuery<'a> {
+struct SyncObjectsArrowQuery<'a> {
     ent: Entity,
     tf: Ref<'a, Transform>,
     arrow: &'a mut ui::ArrowIO,
@@ -173,31 +173,26 @@ pub struct SyncObjectsArrowQuery<'a> {
     has_name: Has<Name>,
 }
 
-pub fn sync_objects(
+#[derive(Resource, Default)]
+struct ArrowsCreatedCounter(usize);
+
+fn sync_objects(
     mut cmd: Commands,
     coord_q: Query<Ref<CoordinateSystem>>,
     mut arrows_q: Query<SyncObjectsArrowQuery>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut meshes: ResMut<Assets<Mesh>>,
+    mut counter: Local<ArrowsCreatedCounter>,
 ) {
     let coord = coord_q.single().unwrap();
 
-    let mut i = 0;
-    for SyncObjectsArrowQueryItem { tf, mut arrow, has_name, .. } in arrows_q.iter_mut() {
-        if !has_name {
-            continue;
-        }
-
-        i += 1;
+    for SyncObjectsArrowQueryItem { tf, mut arrow, .. } in arrows_q.iter_mut() {
         if !tf.is_changed() && !coord.is_changed() {
             continue;
         }
 
         let pos = coord.internal2user * tf.translation / coord.positions_scale;
         arrow.pos = pos;
-        // arrow.pos[0] = pos.x.to_string();
-        // arrow.pos[1] = pos.y.to_string();
-        // arrow.pos[2] = pos.z.to_string();
 
         let quat = convert_quaternion(coord.internal2user, tf.rotation);
         arrow.quat[0] = quat.w.to_string();
@@ -220,7 +215,6 @@ pub fn sync_objects(
         arrow.look[2] = look.z.to_string();
     }
 
-
     for SyncObjectsArrowQueryReadOnlyItem { ent, display, has_name, .. } in arrows_q.iter() {
         if has_name {
             continue;
@@ -232,11 +226,11 @@ pub fn sync_objects(
             ..Color::from(display.default_color).into()
         });
 
+        counter.0 += 1;
         cmd.entity(ent).insert((
-            Name::new(format!("Arrow {i}")),
+            Name::new(format!("Arrow {}", counter.0)),
             MeshMaterial3d(material.clone()),
         ));
-        i += 1;
     }
 
     for SyncObjectsArrowQueryItem { ent, mut display, material, .. } in arrows_q.iter_mut() {
