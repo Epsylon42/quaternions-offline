@@ -49,21 +49,10 @@ struct Billboarded;
 #[derive(Component)]
 struct MainCamera;
 
-#[derive(Resource)]
-#[allow(dead_code)]
-struct RenderingResources {
-    red: Handle<StandardMaterial>,
-    green: Handle<StandardMaterial>,
-    blue: Handle<StandardMaterial>,
-
-    obj_mesh: Handle<Mesh>,
-}
-
 fn setup(
     mut cmd: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    assets: Res<AssetServer>,
 ) {
     let radius = 3.0;
 
@@ -87,27 +76,6 @@ fn setup(
         alpha_mode: AlphaMode::Blend,
         ..Color::from(pallette::GRAY).into()
     });
-
-    let res = RenderingResources {
-        red: materials.add(StandardMaterial {
-            unlit: true,
-            depth_bias: -0.5,
-            ..Color::from(pallette::RED).into()
-        }),
-        green: materials.add(StandardMaterial {
-            unlit: true,
-            depth_bias: -0.5,
-            ..Color::from(pallette::GREEN).into()
-        }),
-        blue: materials.add(StandardMaterial {
-            unlit: true,
-            depth_bias: -0.5,
-            ..Color::from(pallette::BLUE).into()
-        }),
-
-        obj_mesh: assets.load("arrow.obj"),
-    };
-
 
     cmd.spawn((
         geometry::MainPlane,
@@ -210,7 +178,6 @@ fn setup(
     }
 
     cmd.spawn(coord);
-    cmd.insert_resource(res);
     cmd.spawn(geometry::Config::default());
     cmd.spawn(ui::ArrowIO::default());
 }

@@ -1,16 +1,11 @@
-use bevy::prelude::*;
-use crate::{ui, RenderingResources};
+use crate::ui;
+use bevy::{ecs::query::QueryData, prelude::*};
 
 pub struct GeometryPlugin;
 
 impl Plugin for GeometryPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(
-            Update,
-            (sync_axes, sync_objects)
-                .chain()
-                .after(ui::UiSet)
-        );
+        app.add_systems(Update, (sync_axes, sync_objects).chain().after(ui::UiSet));
     }
 }
 
@@ -52,19 +47,19 @@ pub enum Hand {
     Right,
 }
 
-#[derive(Component, Clone, Copy)]
+#[derive(Component)]
 pub struct Config {
     pub up: Axis,
     pub forward: Axis,
     pub up_sign: f32,
     pub forward_sign: f32,
     pub hand: Hand,
-
-    pub positions_scale: f32,
-
     /// if true, changing coordinate system will preserve numeric values of the quaternion
     /// instead of its direction in the internal coordinate system
     pub keep_numerics: bool,
+
+    pub positions_scale: f32,
+    pub arrow_defaults: ui::ArrowDisplay,
 }
 
 impl Default for Config {
@@ -75,8 +70,9 @@ impl Default for Config {
             forward: Axis::Z,
             forward_sign: -1.0,
             hand: Hand::Right,
-            positions_scale: 1.0,
             keep_numerics: false,
+            positions_scale: 1.0,
+            arrow_defaults: default(),
         }
     }
 }
@@ -166,18 +162,32 @@ pub fn sync_axes(
     }
 }
 
+#[derive(QueryData)]
+#[query_data(mutable)]
+pub struct SyncObjectsArrowQuery<'a> {
+    ent: Entity,
+    tf: Ref<'a, Transform>,
+    arrow: &'a mut ui::ArrowIO,
+    display: &'a mut ui::ArrowDisplay,
+    material: Option<&'a MeshMaterial3d<StandardMaterial>>,
+    has_name: Has<Name>,
+}
+
 pub fn sync_objects(
     mut cmd: Commands,
     coord_q: Query<Ref<CoordinateSystem>>,
-    res: Res<RenderingResources>,
-    mut arrows_q: Query<(&mut ui::ArrowIO, Ref<Transform>)>,
-    new_arrows_q: Query<Entity, (With<ui::ArrowIO>, Without<Name>)>,
+    mut arrows_q: Query<SyncObjectsArrowQuery>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut meshes: ResMut<Assets<Mesh>>,
 ) {
     let coord = coord_q.single().unwrap();
 
     let mut i = 0;
-    for (mut arrow, tf) in arrows_q.iter_mut() {
+    for SyncObjectsArrowQueryItem { tf, mut arrow, has_name, .. } in arrows_q.iter_mut() {
+        if !has_name {
+            continue;
+        }
+
         i += 1;
         if !tf.is_changed() && !coord.is_changed() {
             continue;
@@ -210,16 +220,41 @@ pub fn sync_objects(
         arrow.look[2] = look.z.to_string();
     }
 
-    for ent in new_arrows_q.iter() {
+
+    for SyncObjectsArrowQueryReadOnlyItem { ent, display, has_name, .. } in arrows_q.iter() {
+        if has_name {
+            continue;
+        }
+
+        let material = materials.add(StandardMaterial {
+            depth_bias: -0.5,
+            unlit: true,
+            ..Color::from(display.default_color).into()
+        });
+
         cmd.entity(ent).insert((
             Name::new(format!("Arrow {i}")),
-            Mesh3d(res.obj_mesh.clone()),
-            MeshMaterial3d(materials.add(StandardMaterial {
-                depth_bias: -0.5,
-                unlit: true,
-                ..Color::BLACK.into()
-            })),
+            MeshMaterial3d(material.clone()),
         ));
         i += 1;
+    }
+
+    for SyncObjectsArrowQueryItem { ent, mut display, material, .. } in arrows_q.iter_mut() {
+        if !display.model_changed || material.is_none() {
+            continue;
+        }
+        display.model_changed = false;
+
+        cmd.entity(ent)
+            .despawn_related::<Children>()
+            .with_children(|cmd| {
+                crate::mesh::spawn_arrow(
+                    &mut *meshes,
+                    cmd,
+                    display.length,
+                    display.scale,
+                    material.unwrap().0.clone(),
+                );
+            });
     }
 }

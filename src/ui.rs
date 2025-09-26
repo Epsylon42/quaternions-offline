@@ -28,7 +28,7 @@ impl PluginGroup for UiPlugins {
 }
 
 #[derive(Component)]
-#[require(Transform, Visibility)]
+#[require(Transform, Visibility, ArrowDisplay)]
 pub struct ArrowIO {
     pub pos: Vec3,
     pub quat: [String; 4],
@@ -47,6 +47,26 @@ impl Default for ArrowIO {
             look: default(),
             mat: default(),
             up: Axis::Y,
+        }
+    }
+}
+
+#[derive(Component, Clone)]
+#[require(Transform, Visibility)]
+pub struct ArrowDisplay {
+    pub model_changed: bool,
+    pub length: f32,
+    pub scale: f32,
+    pub default_color: LinearRgba,
+}
+
+impl Default for ArrowDisplay {
+    fn default() -> Self {
+        Self {
+            model_changed: true,
+            length: 1.0,
+            scale: 1.0,
+            default_color: LinearRgba::BLACK,
         }
     }
 }
@@ -103,115 +123,144 @@ pub fn settings_ui(mut cmd: Commands, mut ctx: EguiContexts, mut config_q: Query
 
     egui::Window::new("Settings").show(ctx, |ui| {
         if ui.button("Add object").clicked() {
-            cmd.spawn(ArrowIO::default());
+            cmd.spawn((
+                ArrowIO::default(),
+                config.arrow_defaults.clone(),
+            ));
         }
 
-        ui.label("Coordinate System");
-
-        let x_label = || egui::RichText::new("X").color(egui::Color32::RED);
-        let y_label = || egui::RichText::new("Y").color(egui::Color32::GREEN);
-        let z_label = || egui::RichText::new("Z").color(egui::Color32::from_rgb(125, 125, 255));
-        egui::Grid::new("___CoordinatesGrid")
-            .num_columns(3)
-            .show(ui, |ui| {
-                ui.label("Up");
-                ui.label("Fw");
-                ui.label("Hnd");
-                ui.end_row();
-
-                if ui
-                    .selectable_label(config.up == Axis::X, x_label())
-                    .clicked()
-                {
-                    if config.forward == Axis::X {
-                        config.forward = config.up;
-                    }
-                    config.up = Axis::X;
-                }
-                if ui
-                    .selectable_label(config.forward == Axis::X, x_label())
-                    .clicked()
-                {
-                    if config.up == Axis::X {
-                        config.up = config.forward;
-                    }
-                    config.forward = Axis::X;
-                }
-                if ui
-                    .selectable_label(config.hand == Hand::Left, "L")
-                    .clicked()
-                {
-                    config.hand = Hand::Left;
-                }
-                ui.end_row();
-
-                if ui
-                    .selectable_label(config.up == Axis::Y, y_label())
-                    .clicked()
-                {
-                    if config.forward == Axis::Y {
-                        config.forward = config.up;
-                    }
-                    config.up = Axis::Y;
-                }
-                if ui
-                    .selectable_label(config.forward == Axis::Y, y_label())
-                    .clicked()
-                {
-                    if config.up == Axis::Y {
-                        config.up = config.forward;
-                    }
-                    config.forward = Axis::Y;
-                }
-                if ui
-                    .selectable_label(config.hand == Hand::Right, "R")
-                    .clicked()
-                {
-                    config.hand = Hand::Right;
-                }
-                ui.end_row();
-
-                if ui
-                    .selectable_label(config.up == Axis::Z, z_label())
-                    .clicked()
-                {
-                    if config.forward == Axis::Z {
-                        config.forward = config.up;
-                    }
-                    config.up = Axis::Z;
-                }
-                if ui
-                    .selectable_label(config.forward == Axis::Z, z_label())
-                    .clicked()
-                {
-                    if config.up == Axis::Z {
-                        config.up = config.forward;
-                    }
-                    config.forward = Axis::Z;
-                }
-                ui.end_row();
-
-                if ui.selectable_label(config.up_sign < 0.0, "-").clicked() {
-                    config.up_sign *= -1.0;
-                }
-                if ui
-                    .selectable_label(config.forward_sign < 0.0, "-")
-                    .clicked()
-                {
-                    config.forward_sign *= -1.0;
-                }
-                ui.end_row();
+        ui.collapsing("Add object defaults", |ui| {
+            ui.horizontal(|ui| {
+                ui.label("Length: ");
+                let widget = egui::DragValue::new(&mut config.arrow_defaults.length)
+                    .speed(SCROLL_SPEED_POS)
+                    .range(0.01..=f32::INFINITY);
+                ui.add(widget);
             });
-
-        ui.horizontal(|ui| {
-            let response = ui.checkbox(
-                &mut config.bypass_change_detection().keep_numerics,
-                "keep numerics",
-            );
-            if response.clicked() {
-                config.set_changed();
-            }
+            ui.horizontal(|ui| {
+                ui.label("Scale: ");
+                let widget = egui::DragValue::new(&mut config.arrow_defaults.scale)
+                    .speed(SCROLL_SPEED_SCALE)
+                    .range(0.01..=f32::INFINITY);
+                ui.add(widget);
+            });
+            ui.horizontal(|ui| {
+                let mut rgb = config.arrow_defaults.default_color.to_f32_array_no_alpha();
+                ui.label("Color: ");
+                if egui::color_picker::color_edit_button_rgb(ui, &mut rgb).changed() {
+                    config.arrow_defaults.default_color = LinearRgba::from_f32_array_no_alpha(rgb);
+                }
+            })
         });
+
+        egui::CollapsingHeader::new("Coordinate System")
+            .default_open(true)
+            .show(ui, |ui| {
+                let x_label = || egui::RichText::new("X").color(egui::Color32::RED);
+                let y_label = || egui::RichText::new("Y").color(egui::Color32::GREEN);
+                let z_label = || egui::RichText::new("Z").color(egui::Color32::from_rgb(125, 125, 255));
+                egui::Grid::new("___CoordinatesGrid")
+                    .num_columns(3)
+                    .show(ui, |ui| {
+                        ui.label("Up");
+                        ui.label("Fw");
+                        ui.label("Hnd");
+                        ui.end_row();
+
+                        if ui
+                            .selectable_label(config.up == Axis::X, x_label())
+                            .clicked()
+                        {
+                            if config.forward == Axis::X {
+                                config.forward = config.up;
+                            }
+                            config.up = Axis::X;
+                        }
+                        if ui
+                            .selectable_label(config.forward == Axis::X, x_label())
+                            .clicked()
+                        {
+                            if config.up == Axis::X {
+                                config.up = config.forward;
+                            }
+                            config.forward = Axis::X;
+                        }
+                        if ui
+                            .selectable_label(config.hand == Hand::Left, "L")
+                            .clicked()
+                        {
+                            config.hand = Hand::Left;
+                        }
+                        ui.end_row();
+
+                        if ui
+                            .selectable_label(config.up == Axis::Y, y_label())
+                            .clicked()
+                        {
+                            if config.forward == Axis::Y {
+                                config.forward = config.up;
+                            }
+                            config.up = Axis::Y;
+                        }
+                        if ui
+                            .selectable_label(config.forward == Axis::Y, y_label())
+                            .clicked()
+                        {
+                            if config.up == Axis::Y {
+                                config.up = config.forward;
+                            }
+                            config.forward = Axis::Y;
+                        }
+                        if ui
+                            .selectable_label(config.hand == Hand::Right, "R")
+                            .clicked()
+                        {
+                            config.hand = Hand::Right;
+                        }
+                        ui.end_row();
+
+                        if ui
+                            .selectable_label(config.up == Axis::Z, z_label())
+                            .clicked()
+                        {
+                            if config.forward == Axis::Z {
+                                config.forward = config.up;
+                            }
+                            config.up = Axis::Z;
+                        }
+                        if ui
+                            .selectable_label(config.forward == Axis::Z, z_label())
+                            .clicked()
+                        {
+                            if config.up == Axis::Z {
+                                config.up = config.forward;
+                            }
+                            config.forward = Axis::Z;
+                        }
+                        ui.end_row();
+
+                        if ui.selectable_label(config.up_sign < 0.0, "-").clicked() {
+                            config.up_sign *= -1.0;
+                        }
+                        if ui
+                            .selectable_label(config.forward_sign < 0.0, "-")
+                            .clicked()
+                        {
+                            config.forward_sign *= -1.0;
+                        }
+                        ui.end_row();
+                    });
+
+                ui.horizontal(|ui| {
+                    let response = ui.checkbox(
+                        &mut config.bypass_change_detection().keep_numerics,
+                        "keep numerics",
+                    );
+                    if response.clicked() {
+                        config.set_changed();
+                    }
+                });
+            });
 
         ui.horizontal(|ui| {
             ui.label("pos scale");
@@ -236,6 +285,7 @@ pub fn arrows_ui(
         Entity,
         &mut Name,
         &mut ArrowIO,
+        &mut ArrowDisplay,
         &mut Transform,
         &MeshMaterial3d<StandardMaterial>,
     )>,
@@ -244,7 +294,7 @@ pub fn arrows_ui(
     let coord = coord_q.single().unwrap();
     let ctx = ctx.ctx_mut().unwrap();
 
-    for (ent, mut name, mut arrow, mut tf, material) in arrows_q.iter_mut() {
+    for (ent, mut name, mut arrow, mut display, mut tf, material) in arrows_q.iter_mut() {
         egui::Window::new(name.as_str())
             .id(egui::Id::new(ent.index()))
             .show(ctx, |ui| {
@@ -271,9 +321,28 @@ pub fn arrows_ui(
                         let mut rgb = LinearRgba::from(material.base_color).to_f32_array_no_alpha();
                         ui.label("Color: ");
                         if egui::color_picker::color_edit_button_rgb(ui, &mut rgb).changed() {
-                            material.base_color = LinearRgba::rgb(rgb[0], rgb[1], rgb[2]).into();
+                            material.base_color = LinearRgba::from_f32_array_no_alpha(rgb).into()
                         }
                     });
+                    ui.horizontal(|ui| {
+                        ui.label("Length: ");
+                        let widget = egui::DragValue::new(&mut display.length)
+                            .speed(SCROLL_SPEED_POS)
+                            .range(0.01..=f32::INFINITY);
+                        if ui.add(widget).changed() {
+                            display.model_changed = true;
+                        }
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Scale: ");
+                        let widget = egui::DragValue::new(&mut display.scale)
+                            .speed(SCROLL_SPEED_SCALE)
+                            .range(0.01..=f32::INFINITY);
+                        if ui.add(widget).changed() {
+                            display.model_changed = true;
+                        }
+                    });
+
                 });
 
                 egui::CollapsingHeader::new("Values")
