@@ -15,9 +15,6 @@ fn main() {
             brightness: 100.0,
             ..default()
         })
-        .add_plugins(bevy_embedded_assets::EmbeddedAssetPlugin {
-            mode: bevy_embedded_assets::PluginMode::ReplaceDefault
-        })
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 fit_canvas_to_parent: true,
@@ -32,7 +29,6 @@ fn main() {
             ],
             ..default()
         })
-        .add_plugins(bevy_obj::ObjPlugin::default())
         .add_plugins(ui::UiPlugins)
         .add_plugins(geometry::GeometryPlugin)
         .add_systems(Startup, setup)

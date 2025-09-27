@@ -5,13 +5,11 @@ edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [features]
-web = ["getrandom/wasm_js"]
+default = ["noweb"]
+web = ["getrandom/wasm_js", "bevy/webgl2"]
+noweb = ["bevy/x11", "bevy/bevy_log"]
 
 [dependencies]
-bevy_egui = "0.36.0"
-bevy_embedded_assets = "0.13.0"
-bevy_obj = "0.16.1"
-bevy_rich_text3d = "0.4.2"
 getrandom = { version = "0.3.3", features = ["wasm_js"] }
 
 [dependencies.bevy]
@@ -20,20 +18,23 @@ default-features = false
 features = [
     "bevy_asset",
     "bevy_core_pipeline",
-    # "bevy_gizmos",
-    # "bevy_gltf",
-    "bevy_log",
-    # "bevy_mesh_picking_backend",
     "bevy_pbr",
-    # "bevy_picking",
     "bevy_render",
-    "bevy_scene",
     "bevy_window",
     "bevy_winit",
-    "default_font",
-    "webgl2",
-    "x11"
 ]
 
+[dependencies.bevy_egui]
+version = "0.36.0"
+default-features = false
+features = ["render", "manage_clipboard", "default_fonts"]
+
+[dependencies.bevy_rich_text3d]
+version = "0.4.2"
+default-features = false
+features = ["3d"]
+
 [profile.release]
-opt-level = "s"
+panic = "abort"
+lto = true
+opt-level = "z"
