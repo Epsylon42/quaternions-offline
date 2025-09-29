@@ -266,7 +266,7 @@ pub fn settings_ui(mut cmd: Commands, mut ctx: EguiContexts, mut config_q: Query
             ui.label("pos scale");
             let widget =
                 egui::DragValue::new(&mut config.bypass_change_detection().positions_scale)
-                    .range(0.01..=f32::INFINITY)
+                    .range(0.00001..=f32::INFINITY)
                     .speed(SCROLL_SPEED_SCALE);
             let response = ui.add(widget);
             if response.changed() {

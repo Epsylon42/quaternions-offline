@@ -115,7 +115,7 @@ pub fn prepare_rotation(coord: &CoordinateSystem, from: Quat) -> Quat {
 }
 
 pub fn prepare_position(coord: &CoordinateSystem, from: Vec3) -> Vec3 {
-    convert_position(coord.user2internal, from) * coord.positions_scale
+    convert_position(coord.user2internal, from) / coord.positions_scale
 }
 
 fn sync_axes(
@@ -157,7 +157,7 @@ fn sync_axes(
             let num_rot = convert_quaternion(prev_internal2user, tf.rotation);
             let num_pos = convert_position(prev_internal2user, tf.translation) / prev_scale;
             tf.rotation = convert_quaternion(coord.user2internal, num_rot);
-            tf.translation = convert_position(coord.user2internal, num_pos) * coord.positions_scale;
+            tf.translation = convert_position(coord.user2internal, num_pos) / coord.positions_scale;
         }
     }
 }
@@ -191,7 +191,7 @@ fn sync_objects(
             continue;
         }
 
-        let pos = coord.internal2user * tf.translation / coord.positions_scale;
+        let pos = coord.internal2user * tf.translation * coord.positions_scale;
         arrow.pos = pos;
 
         let quat = convert_quaternion(coord.internal2user, tf.rotation);
