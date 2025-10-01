@@ -40,9 +40,6 @@ fn main() {
 }
 
 #[derive(Component)]
-struct Billboarded;
-
-#[derive(Component)]
 struct MainCamera;
 
 fn setup(
