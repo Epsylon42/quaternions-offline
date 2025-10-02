@@ -2,7 +2,7 @@ use bevy::prelude::*;
 use bevy_egui::egui;
 
 use super::*;
-use crate::display::representation as repr;
+use crate::repr;
 
 pub fn repr_settings_ui(
     is_always_on: bool,
@@ -69,17 +69,17 @@ pub fn repr_settings_ui(
     //         &computed.pos_mode,
     //         |ui, mode| {
     //             if ui
-    //                 .selectable_label(*mode == geometry::PositionMode::Flat, "flat")
+    //                 .selectable_label(*mode == PositionMode::Flat, "flat")
     //                 .clicked()
     //             {
-    //                 *mode = geometry::PositionMode::Flat;
+    //                 *mode = PositionMode::Flat;
     //                 return true;
     //             }
     //             if ui
-    //                 .selectable_label(*mode == geometry::PositionMode::Rotated, "rotated")
+    //                 .selectable_label(*mode == PositionMode::Rotated, "rotated")
     //                 .clicked()
     //             {
-    //                 *mode = geometry::PositionMode::Rotated;
+    //                 *mode = PositionMode::Rotated;
     //                 return true;
     //             }
     //             false

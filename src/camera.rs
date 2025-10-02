@@ -9,7 +9,7 @@ pub struct PanOrbitCamera {
     pub focus: Vec3,
     pub up: Vec3,
     pub right: Vec3,
-    pub forward: Vec3,
+    // pub forward: Vec3,
     pub radius: f32,
     pub upside_down: bool,
 }
@@ -20,7 +20,7 @@ impl Default for PanOrbitCamera {
             focus: Vec3::ZERO,
             up: Vec3::Y,
             right: Vec3::X,
-            forward: Vec3::Z,
+            // forward: Vec3::Z,
             radius: 5.0,
             upside_down: false,
         }

@@ -3,28 +3,7 @@ use std::collections::VecDeque;
 use bevy::prelude::*;
 
 use crate::geometry::PositionMode;
-
-#[derive(Component, Clone, Copy, PartialEq, Eq)]
-#[relationship(relationship_target = GroupedObjects)]
-pub struct InGroup(pub Entity);
-
-#[derive(Component)]
-#[relationship_target(relationship = InGroup, linked_spawn)]
-pub struct GroupedObjects(Vec<Entity>);
-
-#[derive(Component, Default, Clone, Copy)]
-pub struct InGroupDisplaySettings {
-    pub popped_out: bool
-}
-
-impl<'a> IntoIterator for &'a GroupedObjects {
-    type Item = Entity;
-    type IntoIter = std::iter::Copied<<&'a Vec<Entity> as IntoIterator>::IntoIter>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.iter().copied()
-    }
-}
+use crate::group::{InGroup, GroupedObjects};
 
 #[derive(Component, Clone)]
 pub struct ComputedRepresentation {
@@ -54,7 +33,7 @@ pub struct ReprSettings {
     pub scale: Option<f32>,
 }
 
-pub fn sync_repr(
+pub fn system_propagate_repr_settings(
     mut values_q: Query<(Entity, Ref<ReprSettings>, Mut<ComputedRepresentation>)>,
     hierarchy_q: Query<(Option<&InGroup>, Option<&GroupedObjects>), With<ComputedRepresentation>>,
 ) {
@@ -91,29 +70,5 @@ pub fn sync_repr(
             sync(&*repr, &mut *computed, &parent_value);
             queue.extend(children.into_iter().flatten());
         }
-    }
-}
-
-pub fn sync_display_arrow(
-    mut cmd: Commands,
-    arrow_q: Query<
-        (Entity, &ComputedRepresentation),
-        (With<crate::objects::Arrow>, Changed<ComputedRepresentation>),
-    >,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-) {
-    for (ent, repr) in arrow_q.iter() {
-        let material = materials.add(StandardMaterial {
-            depth_bias: -0.5,
-            unlit: true,
-            ..Color::from(repr.color).into()
-        });
-
-        cmd.entity(ent)
-            .despawn_related::<Children>()
-            .with_children(|cmd| {
-                crate::mesh::spawn_arrow(&mut *meshes, cmd, repr.length, repr.scale, material);
-            });
     }
 }

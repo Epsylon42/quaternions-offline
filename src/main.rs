@@ -1,29 +1,16 @@
-#![feature(generic_const_exprs)]
-
 use bevy::color::palettes::css as pallette;
 use bevy::prelude::*;
 use bevy_rich_text3d as text3d;
 
 mod camera;
-mod display;
 mod geometry;
 mod mesh;
+mod repr;
+mod conversion;
+mod ui;
 
-pub mod objects {
-    #[derive(bevy::prelude::Component)]
-    #[require(
-        crate::display::ui::ArrowIO,
-        crate::display::representation::ReprSettings
-    )]
-    pub struct Arrow;
-
-    #[derive(bevy::prelude::Component)]
-    #[require(
-        crate::display::ui::GroupIO,
-        crate::display::representation::ReprSettings
-    )]
-    pub struct Group;
-}
+pub mod objects;
+pub use objects::{arrow, group};
 
 fn main() {
     let mut app = App::new();
@@ -45,10 +32,14 @@ fn main() {
             font_embedded: vec![include_bytes!("../assets/FiraSans-Medium.ttf")],
             ..default()
         })
-        .add_plugins(display::ui::UiPlugins)
+        .add_plugins(ui::UiPlugins)
         .add_plugins(geometry::GeometryPlugin)
         .add_systems(Startup, setup)
-        .add_systems(Update, camera::pan_orbit_camera);
+        .add_systems(Update, camera::pan_orbit_camera)
+        .add_systems(Update, (arrow::system_init_arrow_names, arrow::system_sync_arrow_io, arrow::system_sync_display_arrow))
+        .add_systems(Update, group::system_init_group_names)
+        .add_systems(Update, repr::system_propagate_repr_settings)
+        ;
 
     app.run();
 }
@@ -178,7 +169,9 @@ fn setup(
             });
     }
 
-    cmd.spawn(geometry::CoordinateSystem::default());
-    let config = cmd.spawn(display::ui::Config::default()).id();
-    cmd.spawn((objects::Arrow, display::representation::InGroup(config)));
+    cmd.queue(|world: &mut World| {
+        let mut query = world.query_filtered::<Entity, With<ui::ConfigIO>>();
+        let config = query.single(world).unwrap();
+        world.spawn((objects::Arrow, group::InGroup(config)));
+    });
 }

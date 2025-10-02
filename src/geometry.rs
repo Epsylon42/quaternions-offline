@@ -1,13 +1,19 @@
-use crate::display::ui;
-use bevy::{ecs::query::QueryData, prelude::*};
+use crate::{ui, repr};
+use bevy::prelude::*;
 
 pub struct GeometryPlugin;
 
 impl Plugin for GeometryPlugin {
     fn build(&self, app: &mut App) {
+        app.world_mut().spawn(CoordinateSystem::default());
+
         app.add_systems(
             Update,
-            (sync_coordinates, sync_objects, process_transform_commands)
+            (
+                system_sync_coordinates,
+                system_sync_objects,
+                system_process_transform_commands,
+            )
                 .chain()
                 .after(ui::UiSet),
         )
@@ -34,9 +40,9 @@ impl Axis {
         }
     }
 
-    pub fn all() -> [Self; 3] {
-        [Axis::X, Axis::Y, Axis::Z]
-    }
+    // pub fn all() -> [Self; 3] {
+    //     [Axis::X, Axis::Y, Axis::Z]
+    // }
 
     pub fn name(&self) -> &'static str {
         match self {
@@ -70,68 +76,71 @@ impl Default for CoordinateSystem {
     }
 }
 
-fn convert_quaternion(mat: Mat3, mut quat: Quat) -> Quat {
-    let converted = mat * quat.xyz();
+pub fn convert_rotation(mat: &Mat3, mut quat: Quat) -> Quat {
+    let converted = *mat * quat.xyz();
     quat.x = converted.x;
     quat.y = converted.y;
     quat.z = converted.z;
     quat
 }
 
-fn convert_position(mat: Mat3, pos: Vec3) -> Vec3 {
-    mat * pos
-}
-
-pub fn prepare_rotation(coord: &CoordinateSystem, from: Quat) -> Quat {
-    convert_quaternion(coord.user2internal, from)
-}
-
-pub fn prepare_position(coord: &CoordinateSystem, rot: Quat, mode: PositionMode, from: Vec3) -> Vec3 {
-    let pos = convert_position(coord.user2internal, from) / coord.positions_scale;
+pub fn convert_position(
+    mat: &Mat3,
+    scale: f32,
+    mode: PositionMode,
+    rot: Quat,
+    from: Vec3,
+) -> Vec3 {
+    let pos = (*mat * from) / scale;
     match mode {
         PositionMode::Flat => pos,
         PositionMode::Rotated => rot * pos,
     }
 }
 
-fn sync_coordinates(
-    config_q: Query<Ref<ui::Config>>,
+fn system_sync_coordinates(
+    config_q: Query<Ref<ui::ConfigIO>>,
     mut coord_q: Query<&mut CoordinateSystem>,
-    mut axes_q: Query<(&mut Transform, &Axis), Without<crate::objects::Arrow>>,
-    mut arrows_q: Query<&mut Transform, With<crate::objects::Arrow>>,
+    mut axes_q: Query<(&mut Transform, &Axis), Without<crate::arrow::Arrow>>,
+    mut arrows_q: Query<(&mut Transform, Ref<repr::ComputedRepresentation>), With<crate::arrow::Arrow>>,
 ) {
     let mut coord = coord_q.single_mut().unwrap();
     let config = config_q.single().unwrap();
-    if !config.is_changed() {
-        return;
-    }
 
-    let forward_direction = config.forward.to_vec() * config.forward_sign;
-    let up_direction = config.up.to_vec() * config.up_sign;
-    let side_direction =
-        forward_direction.cross(up_direction) * if config.hand == Hand::Left { -1.0 } else { 1.0 };
+    let mut prev_internal2user = coord.internal2user;
+    let mut prev_scale = config.positions_scale;
+    if config.is_changed() {
+        let forward_direction = config.forward.to_vec() * config.forward_sign;
+        let up_direction = config.up.to_vec() * config.up_sign;
+        let side_direction =
+            forward_direction.cross(up_direction) * if config.hand == Hand::Left { -1.0 } else { 1.0 };
 
-    let to_internal_basis = Mat3::from_cols(Vec3::X, Vec3::Y, Vec3::NEG_Z);
-    let to_user_basis = Mat3::from_cols(side_direction, up_direction, forward_direction);
+        let to_internal_basis = Mat3::from_cols(Vec3::X, Vec3::Y, Vec3::NEG_Z);
+        let to_user_basis = Mat3::from_cols(side_direction, up_direction, forward_direction);
 
-    let prev_internal2user = coord.internal2user;
-    let prev_scale = coord.positions_scale;
+        prev_internal2user = coord.internal2user;
+        prev_scale = coord.positions_scale;
 
-    coord.positions_scale = config.positions_scale;
-    coord.user2internal = to_internal_basis * to_user_basis.transpose();
-    coord.internal2user = coord.user2internal.transpose();
+        coord.positions_scale = config.positions_scale;
+        coord.user2internal = to_internal_basis * to_user_basis.transpose();
+        coord.internal2user = coord.user2internal.transpose();
 
-    for (mut tf, axis) in axes_q.iter_mut() {
-        let axis = axis.to_vec();
-        tf.rotation = Quat::from_rotation_arc(axis, coord.user2internal * axis);
+        for (mut tf, axis) in axes_q.iter_mut() {
+            let axis = axis.to_vec();
+            tf.rotation = Quat::from_rotation_arc(axis, coord.user2internal * axis);
+        }
     }
 
     if config.keep_numerics {
-        for mut tf in arrows_q.iter_mut() {
-            let num_rot = convert_quaternion(prev_internal2user, tf.rotation);
-            let num_pos = convert_position(prev_internal2user, tf.translation) / prev_scale;
-            tf.rotation = convert_quaternion(coord.user2internal, num_rot);
-            tf.translation = convert_position(coord.user2internal, num_pos) / coord.positions_scale;
+        for (mut tf, repr) in arrows_q.iter_mut() {
+            if !config.is_changed() && !repr.is_changed() {
+                continue;
+            }
+
+            let num_rot = convert_rotation(&prev_internal2user, tf.rotation);
+            let num_pos = convert_position(&prev_internal2user, prev_scale.recip(), repr.pos_mode, num_rot.inverse(), tf.translation);
+            tf.rotation = convert_rotation(&coord.user2internal, num_rot);
+            tf.translation = convert_position(&coord.user2internal, coord.positions_scale, repr.pos_mode, tf.rotation, dbg!(num_pos));
         }
     }
 }
@@ -139,7 +148,7 @@ fn sync_coordinates(
 #[derive(Component, Default)]
 pub struct UserTransform(pub Transform);
 
-fn sync_objects(
+fn system_sync_objects(
     coord_q: Query<Ref<CoordinateSystem>>,
     mut arrows_q: Query<(Ref<Transform>, &mut UserTransform)>,
 ) {
@@ -151,9 +160,11 @@ fn sync_objects(
         }
 
         let pos = coord.internal2user * tf.translation * coord.positions_scale;
-        let quat = convert_quaternion(coord.internal2user, tf.rotation);
+        let quat = convert_rotation(&coord.internal2user, tf.rotation);
 
-        utf.0 = Transform::default().with_translation(pos).with_rotation(quat);
+        utf.0 = Transform::default()
+            .with_translation(pos)
+            .with_rotation(quat);
     }
 }
 
@@ -181,7 +192,10 @@ pub struct ApplyTransformCommand {
 
 impl ApplyTransformCommand {
     pub fn recompute(target: Entity) -> Self {
-        ApplyTransformCommand { target, transform: AppliedTransform::Recompute }
+        ApplyTransformCommand {
+            target,
+            transform: AppliedTransform::Recompute,
+        }
     }
 
     pub fn pos(target: Entity, pos: Vec3, mode: PositionMode) -> Self {
@@ -213,16 +227,16 @@ impl ApplyTransformCommand {
     }
 }
 
-fn process_transform_commands(
+fn system_process_transform_commands(
     mut events: EventReader<ApplyTransformCommand>,
     coord_q: Query<&CoordinateSystem>,
-    mut arrows_q: Query<&mut Transform>,
+    mut arrows_q: Query<(&mut Transform, &repr::ComputedRepresentation)>,
 ) {
     let coord = coord_q.single().unwrap();
 
     for event in events.read() {
-        let mut tf = if let Ok(tf) = arrows_q.get_mut(event.target) {
-            tf
+        let (mut tf, repr) = if let Ok(x) = arrows_q.get_mut(event.target) {
+            x
         } else {
             continue;
         };
@@ -233,19 +247,25 @@ fn process_transform_commands(
             }
 
             AppliedTransform::Position(pos, mode) => {
-                tf.translation = prepare_position(coord, tf.rotation, mode, pos);
+                tf.translation = convert_position(&coord.user2internal, coord.positions_scale, mode, tf.rotation, pos);
             }
 
             AppliedTransform::RotationQuat(quat) => {
-                tf.rotation = prepare_rotation(coord, quat);
+                let num_pos = convert_position(&Mat3::IDENTITY, 1.0, repr.pos_mode, tf.rotation.inverse(), tf.translation);
+                tf.rotation = convert_rotation(&coord.user2internal, quat);
+                tf.translation = convert_position(&Mat3::IDENTITY, 1.0, repr.pos_mode, tf.rotation, num_pos);
             }
 
             AppliedTransform::RotationMat(mat) => {
-                tf.rotation = prepare_rotation(coord, Quat::from_mat3(&mat));
+                let num_pos = convert_position(&Mat3::IDENTITY, 1.0, repr.pos_mode, tf.rotation.inverse(), tf.translation);
+                tf.rotation = convert_rotation(&coord.user2internal, Quat::from_mat3(&mat));
+                tf.translation = convert_position(&Mat3::IDENTITY, 1.0, repr.pos_mode, tf.rotation, num_pos);
             }
 
             AppliedTransform::RotationEuler(Vec3 { x, y, z }) => {
-                tf.rotation = prepare_rotation(coord, Quat::from_euler(EulerRot::XYZ, x, y, z));
+                let num_pos = convert_position(&Mat3::IDENTITY, 1.0, repr.pos_mode, tf.rotation.inverse(), tf.translation);
+                tf.rotation = convert_rotation(&coord.user2internal, Quat::from_euler(EulerRot::XYZ, x, y, z));
+                tf.translation = convert_position(&Mat3::IDENTITY, 1.0, repr.pos_mode, tf.rotation, num_pos);
             }
         }
     }

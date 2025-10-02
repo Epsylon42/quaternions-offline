@@ -1,14 +1,14 @@
 use bevy::prelude::*;
 use bevy_egui::{egui, EguiClipboard};
 
-use crate::display::ui::*;
+use crate::arrow::ArrowIO;
+use super::{*, common::*};
 
 pub fn arrow_ui(
     cmd: &mut Commands,
     ui: &mut egui::Ui,
     clip: &mut EguiClipboard,
     ArrowsQueryItem { ent, mut name, mut arrow, mut repr, computed, in_group_display, .. }: ArrowsQueryItem,
-    // (ent, mut name, mut arrow, mut repr, computed_repr): (Entity, Mut<Name>, Mut<ArrowIO>, Mut<repr::ReprSettings>, &repr::ComputedRepresentation),
     mut events: &mut EventWriter<ApplyTransformCommand>,
 ) {
     ui.horizontal(|ui| {
@@ -37,7 +37,7 @@ pub fn arrow_ui(
             });
         });
 
-        if repr_settings_ui(false, ui, repr.bypass_change_detection(), &*computed) {
+        if repr_settings::repr_settings_ui(false, ui, repr.bypass_change_detection(), &*computed) {
             repr.set_changed();
         }
     });
@@ -243,7 +243,7 @@ fn display_matrix(
                     clip_copy(clip, &arrow.mat);
                 }
                 if ui.button("Copy CM").clicked() {
-                    clip_copy(clip, &conv::transpose_mat_io::<3>(&arrow.mat));
+                    clip_copy(clip, &conv::transpose_mat_io(&arrow.mat));
                 }
                 ui.end_row();
 
@@ -253,7 +253,7 @@ fn display_matrix(
                 if ui.button("Paste CM").clicked() {
                     let mut tmp: [String; 9] = default();
                     clip_paste(clip, &mut tmp);
-                    arrow.mat = conv::transpose_mat_io::<3>(&tmp);
+                    arrow.mat = conv::transpose_mat_io(&tmp);
                 }
                 ui.end_row();
             });

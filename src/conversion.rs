@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use bevy::prelude::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -51,7 +53,7 @@ pub fn mat3_to_strings(mat: &Mat3, mode: MatStrMode) -> [String; 9] {
         strings[i] = val.to_string();
     }
     if mode == MatStrMode::RowMajor {
-        strings = transpose_mat_io::<3>(&strings);
+        strings = transpose_mat_io(&strings);
     }
 
     strings
@@ -60,7 +62,7 @@ pub fn mat3_to_strings(mat: &Mat3, mode: MatStrMode) -> [String; 9] {
 pub fn strings_to_mat3(strings: &[String; 9], mode: MatStrMode) -> Mat3 {
     match mode {
         MatStrMode::ColMajor => Mat3::from_cols_array(&parse_strings_to_f32(strings)),
-        MatStrMode::RowMajor => Mat3::from_cols_array(&parse_strings_to_f32(&transpose_mat_io::<3>(strings))),
+        MatStrMode::RowMajor => Mat3::from_cols_array(&parse_strings_to_f32(&transpose_mat_io(strings))),
     }
 }
 
@@ -70,7 +72,7 @@ pub fn mat4_to_strings(mat: &Mat4, mode: MatStrMode) -> [String; 16] {
         strings[i] = val.to_string();
     }
     if mode == MatStrMode::RowMajor {
-        strings = transpose_mat_io::<4>(&strings);
+        strings = transpose_mat_io(&strings);
     }
 
     strings
@@ -79,18 +81,21 @@ pub fn mat4_to_strings(mat: &Mat4, mode: MatStrMode) -> [String; 16] {
 pub fn strings_to_mat4(strings: &[String; 16], mode: MatStrMode) -> Mat4 {
     match mode {
         MatStrMode::ColMajor => Mat4::from_cols_array(&parse_strings_to_f32(strings)),
-        MatStrMode::RowMajor => Mat4::from_cols_array(&parse_strings_to_f32(&transpose_mat_io::<4>(strings))),
+        MatStrMode::RowMajor => Mat4::from_cols_array(&parse_strings_to_f32(&transpose_mat_io(strings))),
     }
 }
 
-pub fn transpose_mat_io<const S: usize>(from: &[String; S*S]) -> [String; S*S]
+pub fn transpose_mat_io<const S: usize>(from: &[String; S]) -> [String; S]
 where
-    [String; S*S]: Default,
+    [String; S]: Default,
 {
-    let mut to: [String; S*S] = default();
-    for i in 0..S {
-        for j in 0..S {
-            to[i * S + j] = from[j * S + i].clone();
+    let s = S.isqrt();
+
+    let mut to: [String; S] = default();
+
+    for i in 0..s {
+        for j in 0..s {
+            to[i * s + j] = from[j * s + i].clone();
         }
     }
     to
