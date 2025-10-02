@@ -60,32 +60,32 @@ pub fn repr_settings_ui(
             },
         );
     });
-    ui.horizontal(|ui| {
-        changed |= overridable_field(
-            is_always_on,
-            ui,
-            "Pos: ",
-            &mut repr.pos_mode,
-            &computed.pos_mode,
-            |ui, mode| {
-                if ui
-                    .selectable_label(*mode == geometry::PositionMode::Flat, "flat")
-                    .clicked()
-                {
-                    *mode = geometry::PositionMode::Flat;
-                    return true;
-                }
-                if ui
-                    .selectable_label(*mode == geometry::PositionMode::Rotated, "rotated")
-                    .clicked()
-                {
-                    *mode = geometry::PositionMode::Rotated;
-                    return true;
-                }
-                false
-            },
-        );
-    });
+    // ui.horizontal(|ui| {
+    //     changed |= overridable_field(
+    //         is_always_on,
+    //         ui,
+    //         "Pos: ",
+    //         &mut repr.pos_mode,
+    //         &computed.pos_mode,
+    //         |ui, mode| {
+    //             if ui
+    //                 .selectable_label(*mode == geometry::PositionMode::Flat, "flat")
+    //                 .clicked()
+    //             {
+    //                 *mode = geometry::PositionMode::Flat;
+    //                 return true;
+    //             }
+    //             if ui
+    //                 .selectable_label(*mode == geometry::PositionMode::Rotated, "rotated")
+    //                 .clicked()
+    //             {
+    //                 *mode = geometry::PositionMode::Rotated;
+    //                 return true;
+    //             }
+    //             false
+    //         },
+    //     );
+    // });
 
     changed
 }

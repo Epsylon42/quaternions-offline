@@ -4,7 +4,7 @@ use bevy_egui::{EguiClipboard, EguiContexts, EguiPlugin, EguiPrimaryContextPass,
 use super::{conversion as conv, representation as repr};
 use crate::{
     display::representation::{GroupedObjects, InGroup, InGroupDisplaySettings},
-    geometry::{self, ApplyTransformCommand, Axis, Hand},
+    geometry::{self, ApplyTransformCommand, Axis, Hand, PositionMode},
 };
 
 mod arrow;
@@ -103,13 +103,16 @@ impl Default for ArrowIO {
 
 fn sync_arrowio(
     mut arrow_q: Query<
-        (&mut ArrowIO, Ref<geometry::UserTransform>),
+        (&mut ArrowIO, &repr::ComputedRepresentation, Ref<geometry::UserTransform>),
         Changed<geometry::UserTransform>,
     >,
 ) {
-    for (mut arrow, utf) in arrow_q.iter_mut() {
+    for (mut arrow, repr, utf) in arrow_q.iter_mut() {
         let tf = &utf.0;
-        arrow.pos = tf.translation;
+        arrow.pos = match repr.pos_mode {
+            PositionMode::Flat => tf.translation,
+            PositionMode::Rotated => tf.rotation.inverse() * tf.translation,
+        };
 
         let quat = tf.rotation;
         arrow.quat = conv::quat_to_strings(quat, conv::QuatStrMode::WXYZ);

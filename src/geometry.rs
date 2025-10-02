@@ -86,8 +86,12 @@ pub fn prepare_rotation(coord: &CoordinateSystem, from: Quat) -> Quat {
     convert_quaternion(coord.user2internal, from)
 }
 
-pub fn prepare_position(coord: &CoordinateSystem, from: Vec3) -> Vec3 {
-    convert_position(coord.user2internal, from) / coord.positions_scale
+pub fn prepare_position(coord: &CoordinateSystem, rot: Quat, mode: PositionMode, from: Vec3) -> Vec3 {
+    let pos = convert_position(coord.user2internal, from) / coord.positions_scale;
+    match mode {
+        PositionMode::Flat => pos,
+        PositionMode::Rotated => rot * pos,
+    }
 }
 
 fn sync_coordinates(
@@ -180,10 +184,10 @@ impl ApplyTransformCommand {
         ApplyTransformCommand { target, transform: AppliedTransform::Recompute }
     }
 
-    pub fn pos_flat(target: Entity, pos: Vec3) -> Self {
+    pub fn pos(target: Entity, pos: Vec3, mode: PositionMode) -> Self {
         ApplyTransformCommand {
             target,
-            transform: AppliedTransform::Position(pos, PositionMode::Flat),
+            transform: AppliedTransform::Position(pos, mode),
         }
     }
 
@@ -228,11 +232,8 @@ fn process_transform_commands(
                 tf.set_changed();
             }
 
-            AppliedTransform::Position(pos, PositionMode::Flat) => {
-                tf.translation = prepare_position(coord, pos);
-            }
-            AppliedTransform::Position(pos, PositionMode::Rotated) => {
-                todo!()
+            AppliedTransform::Position(pos, mode) => {
+                tf.translation = prepare_position(coord, tf.rotation, mode, pos);
             }
 
             AppliedTransform::RotationQuat(quat) => {
