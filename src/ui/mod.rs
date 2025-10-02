@@ -49,8 +49,9 @@ pub struct ConfigIO {
     pub hand: Hand,
     /// if true, changing coordinate system will preserve numeric values of the quaternion
     /// instead of its direction in the internal coordinate system
-    pub keep_numerics: bool,
+    pub keep_numbers: bool,
 
+    pub position_mode: PositionMode,
     pub positions_scale: f32,
 }
 
@@ -62,7 +63,8 @@ impl Default for ConfigIO {
             forward: Axis::Z,
             forward_sign: -1.0,
             hand: Hand::Right,
-            keep_numerics: false,
+            keep_numbers: false,
+            position_mode: default(),
             positions_scale: 1.0,
         }
     }

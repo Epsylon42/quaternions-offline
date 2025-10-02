@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 
 use crate::conversion as conv;
-use crate::{ repr, geometry::{self, PositionMode} };
+use crate::{ repr, geometry };
 
 #[derive(Component)]
 #[require(
@@ -11,7 +11,7 @@ use crate::{ repr, geometry::{self, PositionMode} };
 pub struct Arrow;
 
 #[derive(Component)]
-#[require(Transform, Visibility, crate::geometry::UserTransform)]
+#[require(Transform, Visibility, geometry::UserTransform)]
 pub struct ArrowIO {
     pub pos: Vec3,
     pub quat: [String; 4],
@@ -51,16 +51,12 @@ pub fn system_init_arrow_names(
 
 pub fn system_sync_arrow_io(
     mut arrow_q: Query<
-        (&mut ArrowIO, &repr::ComputedRepresentation, Ref<geometry::UserTransform>),
-        Or<(Changed<geometry::UserTransform>, Changed<repr::ComputedRepresentation>)>,
+        (&mut ArrowIO, Ref<geometry::UserTransform>),
+        Changed<geometry::UserTransform>,
     >,
 ) {
-    for (mut arrow, repr, utf) in arrow_q.iter_mut() {
-        let tf = &utf.0;
-        arrow.pos = match repr.pos_mode {
-            PositionMode::Flat => tf.translation,
-            PositionMode::Rotated => tf.rotation.inverse() * tf.translation,
-        };
+    for (mut arrow, tf) in arrow_q.iter_mut() {
+        arrow.pos = tf.translation;
 
         let quat = tf.rotation;
         arrow.quat = conv::quat_to_strings(quat, conv::QuatStrMode::WXYZ);

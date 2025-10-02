@@ -23,7 +23,8 @@ pub fn system_settings_ui(
         }
 
         ui.collapsing("Default Settings", |ui| {
-            if repr_settings::repr_settings_ui(true, ui, repr.bypass_change_detection(), &computed) {
+            if repr_settings::repr_settings_ui(true, ui, repr.bypass_change_detection(), &computed)
+            {
                 repr.set_changed();
             }
         });
@@ -127,27 +128,43 @@ pub fn system_settings_ui(
                         ui.end_row();
                     });
 
-                ui.horizontal(|ui| {
-                    let response = ui.checkbox(
-                        &mut config.bypass_change_detection().keep_numerics,
-                        "keep numerics",
-                    );
-                    if response.clicked() {
-                        config.set_changed();
-                    }
+                    ui.horizontal(|ui| {
+                        ui.label("pos mode");
+                        if ui
+                            .selectable_label(config.position_mode == PositionMode::Flat, "flat")
+                            .clicked()
+                        {
+                            config.position_mode = PositionMode::Flat;
+                        }
+                        if ui
+                            .selectable_label(config.position_mode == PositionMode::Rotated, "rotated")
+                            .clicked()
+                        {
+                            config.position_mode = PositionMode::Rotated;
+                        }
+                    });
+
+                    ui.horizontal(|ui| {
+                        ui.label("pos scale");
+                        let widget =
+                            egui::DragValue::new(&mut config.bypass_change_detection().positions_scale)
+                                .range(0.00001..=f32::INFINITY)
+                                .speed(SCROLL_SPEED_SCALE);
+                        let response = ui.add(widget);
+                        if response.changed() {
+                            config.set_changed();
+                        }
+                    });
+
+                    ui.horizontal(|ui| {
+                        let response = ui.checkbox(
+                            &mut config.bypass_change_detection().keep_numbers,
+                            "keep numbers on change",
+                        );
+                        if response.clicked() {
+                            config.set_changed();
+                        }
+                    });
                 });
             });
-
-        ui.horizontal(|ui| {
-            ui.label("pos scale");
-            let widget =
-                egui::DragValue::new(&mut config.bypass_change_detection().positions_scale)
-                    .range(0.00001..=f32::INFINITY)
-                    .speed(SCROLL_SPEED_SCALE);
-            let response = ui.add(widget);
-            if response.changed() {
-                config.set_changed();
-            }
-        })
-    });
 }

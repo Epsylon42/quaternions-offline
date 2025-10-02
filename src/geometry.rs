@@ -59,10 +59,18 @@ pub enum Hand {
     Right,
 }
 
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub enum PositionMode {
+    #[default]
+    Flat,
+    Rotated,
+}
+
 #[derive(Component)]
 pub struct CoordinateSystem {
     pub user2internal: Mat3,
     pub internal2user: Mat3,
+    pub position_mode: PositionMode,
     pub positions_scale: f32,
 }
 
@@ -71,6 +79,7 @@ impl Default for CoordinateSystem {
         Self {
             user2internal: Mat3::IDENTITY,
             internal2user: Mat3::IDENTITY,
+            position_mode: default(),
             positions_scale: 1.0,
         }
     }
@@ -107,8 +116,9 @@ fn system_sync_coordinates(
     let mut coord = coord_q.single_mut().unwrap();
     let config = config_q.single().unwrap();
 
-    let mut prev_internal2user = coord.internal2user;
-    let mut prev_scale = config.positions_scale;
+    let prev_internal2user = coord.internal2user;
+    let prev_scale = config.positions_scale;
+    let prev_pos_mode = coord.position_mode;
     if config.is_changed() {
         let forward_direction = config.forward.to_vec() * config.forward_sign;
         let up_direction = config.up.to_vec() * config.up_sign;
@@ -118,10 +128,8 @@ fn system_sync_coordinates(
         let to_internal_basis = Mat3::from_cols(Vec3::X, Vec3::Y, Vec3::NEG_Z);
         let to_user_basis = Mat3::from_cols(side_direction, up_direction, forward_direction);
 
-        prev_internal2user = coord.internal2user;
-        prev_scale = coord.positions_scale;
-
         coord.positions_scale = config.positions_scale;
+        coord.position_mode = config.position_mode;
         coord.user2internal = to_internal_basis * to_user_basis.transpose();
         coord.internal2user = coord.user2internal.transpose();
 
@@ -131,21 +139,21 @@ fn system_sync_coordinates(
         }
     }
 
-    if config.keep_numerics {
+    if config.keep_numbers {
         for (mut tf, repr) in arrows_q.iter_mut() {
             if !config.is_changed() && !repr.is_changed() {
                 continue;
             }
 
             let num_rot = convert_rotation(&prev_internal2user, tf.rotation);
-            let num_pos = convert_position(&prev_internal2user, prev_scale.recip(), repr.pos_mode, num_rot.inverse(), tf.translation);
+            let num_pos = convert_position(&prev_internal2user, prev_scale.recip(), prev_pos_mode, num_rot.inverse(), tf.translation);
             tf.rotation = convert_rotation(&coord.user2internal, num_rot);
-            tf.translation = convert_position(&coord.user2internal, coord.positions_scale, repr.pos_mode, tf.rotation, dbg!(num_pos));
+            tf.translation = convert_position(&coord.user2internal, coord.positions_scale, coord.position_mode, tf.rotation, num_pos);
         }
     }
 }
 
-#[derive(Component, Default)]
+#[derive(Component, Default, Deref, DerefMut)]
 pub struct UserTransform(pub Transform);
 
 fn system_sync_objects(
@@ -159,8 +167,8 @@ fn system_sync_objects(
             continue;
         }
 
-        let pos = coord.internal2user * tf.translation * coord.positions_scale;
         let quat = convert_rotation(&coord.internal2user, tf.rotation);
+        let pos = convert_position(&coord.internal2user, coord.positions_scale.recip(), coord.position_mode, quat.inverse(), tf.translation);
 
         utf.0 = Transform::default()
             .with_translation(pos)
@@ -168,17 +176,10 @@ fn system_sync_objects(
     }
 }
 
-#[derive(Clone, Copy, Default, PartialEq, Eq)]
-pub enum PositionMode {
-    #[default]
-    Flat,
-    Rotated,
-}
-
 #[derive(Clone, Copy)]
 pub enum AppliedTransform {
     Recompute,
-    Position(Vec3, PositionMode),
+    Position(Vec3),
     RotationQuat(Quat),
     RotationMat(Mat3),
     RotationEuler(Vec3),
@@ -198,10 +199,10 @@ impl ApplyTransformCommand {
         }
     }
 
-    pub fn pos(target: Entity, pos: Vec3, mode: PositionMode) -> Self {
+    pub fn pos(target: Entity, pos: Vec3) -> Self {
         ApplyTransformCommand {
             target,
-            transform: AppliedTransform::Position(pos, mode),
+            transform: AppliedTransform::Position(pos),
         }
     }
 
@@ -230,13 +231,13 @@ impl ApplyTransformCommand {
 fn system_process_transform_commands(
     mut events: EventReader<ApplyTransformCommand>,
     coord_q: Query<&CoordinateSystem>,
-    mut arrows_q: Query<(&mut Transform, &repr::ComputedRepresentation)>,
+    mut arrows_q: Query<&mut Transform>,
 ) {
     let coord = coord_q.single().unwrap();
 
     for event in events.read() {
-        let (mut tf, repr) = if let Ok(x) = arrows_q.get_mut(event.target) {
-            x
+        let mut tf = if let Ok(tf) = arrows_q.get_mut(event.target) {
+            tf
         } else {
             continue;
         };
@@ -246,26 +247,26 @@ fn system_process_transform_commands(
                 tf.set_changed();
             }
 
-            AppliedTransform::Position(pos, mode) => {
-                tf.translation = convert_position(&coord.user2internal, coord.positions_scale, mode, tf.rotation, pos);
+            AppliedTransform::Position(pos) => {
+                tf.translation = convert_position(&coord.user2internal, coord.positions_scale, coord.position_mode, tf.rotation, pos);
             }
 
             AppliedTransform::RotationQuat(quat) => {
-                let num_pos = convert_position(&Mat3::IDENTITY, 1.0, repr.pos_mode, tf.rotation.inverse(), tf.translation);
+                let num_pos = convert_position(&Mat3::IDENTITY, 1.0, coord.position_mode, tf.rotation.inverse(), tf.translation);
                 tf.rotation = convert_rotation(&coord.user2internal, quat);
-                tf.translation = convert_position(&Mat3::IDENTITY, 1.0, repr.pos_mode, tf.rotation, num_pos);
+                tf.translation = convert_position(&Mat3::IDENTITY, 1.0, coord.position_mode, tf.rotation, num_pos);
             }
 
             AppliedTransform::RotationMat(mat) => {
-                let num_pos = convert_position(&Mat3::IDENTITY, 1.0, repr.pos_mode, tf.rotation.inverse(), tf.translation);
+                let num_pos = convert_position(&Mat3::IDENTITY, 1.0, coord.position_mode, tf.rotation.inverse(), tf.translation);
                 tf.rotation = convert_rotation(&coord.user2internal, Quat::from_mat3(&mat));
-                tf.translation = convert_position(&Mat3::IDENTITY, 1.0, repr.pos_mode, tf.rotation, num_pos);
+                tf.translation = convert_position(&Mat3::IDENTITY, 1.0, coord.position_mode, tf.rotation, num_pos);
             }
 
             AppliedTransform::RotationEuler(Vec3 { x, y, z }) => {
-                let num_pos = convert_position(&Mat3::IDENTITY, 1.0, repr.pos_mode, tf.rotation.inverse(), tf.translation);
+                let num_pos = convert_position(&Mat3::IDENTITY, 1.0, coord.position_mode, tf.rotation.inverse(), tf.translation);
                 tf.rotation = convert_rotation(&coord.user2internal, Quat::from_euler(EulerRot::XYZ, x, y, z));
-                tf.translation = convert_position(&Mat3::IDENTITY, 1.0, repr.pos_mode, tf.rotation, num_pos);
+                tf.translation = convert_position(&Mat3::IDENTITY, 1.0, coord.position_mode, tf.rotation, num_pos);
             }
         }
     }

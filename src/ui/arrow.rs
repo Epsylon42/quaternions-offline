@@ -45,7 +45,7 @@ pub fn arrow_ui(
     egui::CollapsingHeader::new("Values")
         .default_open(true)
         .show(ui, |ui| {
-            display_position(ui, &mut *clip, ent, &mut arrow, &mut events, computed.pos_mode);
+            display_position(ui, &mut *clip, ent, &mut arrow, &mut events);
             display_quaternion(ui, &mut *clip, ent, &mut arrow, &mut events);
             display_matrix(ui, &mut *clip, ent, &mut arrow, &mut events);
             display_euler(ui, &mut *clip, ent, &mut arrow, &mut events);
@@ -59,7 +59,6 @@ fn display_position(
     ent: Entity,
     arrow: &mut ArrowIO,
     events: &mut EventWriter<ApplyTransformCommand>,
-    pos_mode: PositionMode,
 ) {
     let display_field = |ui: &mut egui::Ui, name: &'static str, buf: &mut f32| -> bool {
         let mut changed = false;
@@ -93,7 +92,7 @@ fn display_position(
     });
 
     if changed {
-        events.write(ApplyTransformCommand::pos(ent, arrow.pos, pos_mode));
+        events.write(ApplyTransformCommand::pos(ent, arrow.pos));
     }
 }
 
