@@ -1,11 +1,17 @@
-use crate::ui;
+use crate::display::ui;
 use bevy::{ecs::query::QueryData, prelude::*};
 
 pub struct GeometryPlugin;
 
 impl Plugin for GeometryPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, (sync_axes, sync_objects).chain().after(ui::UiSet));
+        app.add_systems(
+            Update,
+            (sync_coordinates, sync_objects, process_transform_commands)
+                .chain()
+                .after(ui::UiSet),
+        )
+        .add_event::<ApplyTransformCommand>();
     }
 }
 
@@ -48,40 +54,7 @@ pub enum Hand {
 }
 
 #[derive(Component)]
-pub struct Config {
-    pub up: Axis,
-    pub forward: Axis,
-    pub up_sign: f32,
-    pub forward_sign: f32,
-    pub hand: Hand,
-    /// if true, changing coordinate system will preserve numeric values of the quaternion
-    /// instead of its direction in the internal coordinate system
-    pub keep_numerics: bool,
-
-    pub positions_scale: f32,
-    pub arrow_defaults: ui::ArrowDisplay,
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            up: Axis::Y,
-            up_sign: 1.0,
-            forward: Axis::Z,
-            forward_sign: -1.0,
-            hand: Hand::Right,
-            keep_numerics: false,
-            positions_scale: 1.0,
-            arrow_defaults: default(),
-        }
-    }
-}
-
-#[derive(Component)]
 pub struct CoordinateSystem {
-    /// Map<Axis, Entity>
-    pub entities: [Entity; 3],
-
     pub user2internal: Mat3,
     pub internal2user: Mat3,
     pub positions_scale: f32,
@@ -90,7 +63,6 @@ pub struct CoordinateSystem {
 impl Default for CoordinateSystem {
     fn default() -> Self {
         Self {
-            entities: [Entity::PLACEHOLDER; 3],
             user2internal: Mat3::IDENTITY,
             internal2user: Mat3::IDENTITY,
             positions_scale: 1.0,
@@ -118,11 +90,11 @@ pub fn prepare_position(coord: &CoordinateSystem, from: Vec3) -> Vec3 {
     convert_position(coord.user2internal, from) / coord.positions_scale
 }
 
-fn sync_axes(
-    config_q: Query<Ref<Config>>,
+fn sync_coordinates(
+    config_q: Query<Ref<ui::Config>>,
     mut coord_q: Query<&mut CoordinateSystem>,
-    mut axes_q: Query<&mut Transform, (Without<MainPlane>, Without<ui::ArrowIO>)>,
-    mut arrows_q: Query<&mut Transform, With<ui::ArrowIO>>,
+    mut axes_q: Query<(&mut Transform, &Axis), Without<crate::objects::Arrow>>,
+    mut arrows_q: Query<&mut Transform, With<crate::objects::Arrow>>,
 ) {
     let mut coord = coord_q.single_mut().unwrap();
     let config = config_q.single().unwrap();
@@ -145,9 +117,7 @@ fn sync_axes(
     coord.user2internal = to_internal_basis * to_user_basis.transpose();
     coord.internal2user = coord.user2internal.transpose();
 
-    for axis in Axis::all() {
-        let mut tf = axes_q.get_mut(coord.entities[axis as usize]).unwrap();
-
+    for (mut tf, axis) in axes_q.iter_mut() {
         let axis = axis.to_vec();
         tf.rotation = Quat::from_rotation_arc(axis, coord.user2internal * axis);
     }
@@ -162,93 +132,120 @@ fn sync_axes(
     }
 }
 
-#[derive(QueryData)]
-#[query_data(mutable)]
-struct SyncObjectsArrowQuery<'a> {
-    ent: Entity,
-    tf: Ref<'a, Transform>,
-    arrow: &'a mut ui::ArrowIO,
-    display: &'a mut ui::ArrowDisplay,
-    material: Option<&'a MeshMaterial3d<StandardMaterial>>,
-    has_name: Has<Name>,
-}
-
-#[derive(Resource, Default)]
-struct ArrowsCreatedCounter(usize);
+#[derive(Component, Default)]
+pub struct UserTransform(pub Transform);
 
 fn sync_objects(
-    mut cmd: Commands,
     coord_q: Query<Ref<CoordinateSystem>>,
-    mut arrows_q: Query<SyncObjectsArrowQuery>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut counter: Local<ArrowsCreatedCounter>,
+    mut arrows_q: Query<(Ref<Transform>, &mut UserTransform)>,
 ) {
     let coord = coord_q.single().unwrap();
 
-    for SyncObjectsArrowQueryItem { tf, mut arrow, .. } in arrows_q.iter_mut() {
+    for (tf, mut utf) in arrows_q.iter_mut() {
         if !tf.is_changed() && !coord.is_changed() {
             continue;
         }
 
         let pos = coord.internal2user * tf.translation * coord.positions_scale;
-        arrow.pos = pos;
-
         let quat = convert_quaternion(coord.internal2user, tf.rotation);
-        arrow.quat[0] = quat.w.to_string();
-        arrow.quat[1] = quat.x.to_string();
-        arrow.quat[2] = quat.y.to_string();
-        arrow.quat[3] = quat.z.to_string();
 
-        let (x, y, z) = quat.to_euler(EulerRot::XYZ);
-        arrow.euler = Vec3::new(x, y, z).map(f32::to_degrees);
+        utf.0 = Transform::default().with_translation(pos).with_rotation(quat);
+    }
+}
 
-        let mat = Mat3::from_quat(quat).to_cols_array();
-        for (from, to) in mat.into_iter().zip(&mut arrow.mat) {
-            *to = from.to_string();
-        }
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub enum PositionMode {
+    #[default]
+    Flat,
+    Rotated,
+}
 
-        // TODO: take position into account
-        let look = coord.internal2user * (tf.rotation * Vec3::NEG_Z);
-        arrow.look[0] = look.x.to_string();
-        arrow.look[1] = look.y.to_string();
-        arrow.look[2] = look.z.to_string();
+#[derive(Clone, Copy)]
+pub enum AppliedTransform {
+    Recompute,
+    Position(Vec3, PositionMode),
+    RotationQuat(Quat),
+    RotationMat(Mat3),
+    RotationEuler(Vec3),
+}
+
+#[derive(Event)]
+pub struct ApplyTransformCommand {
+    pub target: Entity,
+    pub transform: AppliedTransform,
+}
+
+impl ApplyTransformCommand {
+    pub fn recompute(target: Entity) -> Self {
+        ApplyTransformCommand { target, transform: AppliedTransform::Recompute }
     }
 
-    for SyncObjectsArrowQueryReadOnlyItem { ent, display, has_name, .. } in arrows_q.iter() {
-        if has_name {
-            continue;
+    pub fn pos_flat(target: Entity, pos: Vec3) -> Self {
+        ApplyTransformCommand {
+            target,
+            transform: AppliedTransform::Position(pos, PositionMode::Flat),
         }
-
-        let material = materials.add(StandardMaterial {
-            depth_bias: -0.5,
-            unlit: true,
-            ..Color::from(display.default_color).into()
-        });
-
-        counter.0 += 1;
-        cmd.entity(ent).insert((
-            Name::new(format!("Arrow {}", counter.0)),
-            MeshMaterial3d(material.clone()),
-        ));
     }
 
-    for SyncObjectsArrowQueryItem { ent, mut display, material, .. } in arrows_q.iter_mut() {
-        if !display.model_changed || material.is_none() {
-            continue;
+    pub fn rot_quat(target: Entity, rot: Quat) -> Self {
+        ApplyTransformCommand {
+            target,
+            transform: AppliedTransform::RotationQuat(rot),
         }
-        display.model_changed = false;
+    }
 
-        cmd.entity(ent)
-            .despawn_related::<Children>()
-            .with_children(|cmd| {
-                crate::mesh::spawn_arrow(
-                    &mut *meshes,
-                    cmd,
-                    display.length,
-                    display.scale,
-                    material.unwrap().0.clone(),
-                );
-            });
+    pub fn rot_mat(target: Entity, rot: Mat3) -> Self {
+        ApplyTransformCommand {
+            target,
+            transform: AppliedTransform::RotationMat(rot),
+        }
+    }
+
+    pub fn rot_euler(target: Entity, rot: Vec3) -> Self {
+        ApplyTransformCommand {
+            target,
+            transform: AppliedTransform::RotationEuler(rot),
+        }
+    }
+}
+
+fn process_transform_commands(
+    mut events: EventReader<ApplyTransformCommand>,
+    coord_q: Query<&CoordinateSystem>,
+    mut arrows_q: Query<&mut Transform>,
+) {
+    let coord = coord_q.single().unwrap();
+
+    for event in events.read() {
+        let mut tf = if let Ok(tf) = arrows_q.get_mut(event.target) {
+            tf
+        } else {
+            continue;
+        };
+
+        match event.transform {
+            AppliedTransform::Recompute => {
+                tf.set_changed();
+            }
+
+            AppliedTransform::Position(pos, PositionMode::Flat) => {
+                tf.translation = prepare_position(coord, pos);
+            }
+            AppliedTransform::Position(pos, PositionMode::Rotated) => {
+                todo!()
+            }
+
+            AppliedTransform::RotationQuat(quat) => {
+                tf.rotation = prepare_rotation(coord, quat);
+            }
+
+            AppliedTransform::RotationMat(mat) => {
+                tf.rotation = prepare_rotation(coord, Quat::from_mat3(&mat));
+            }
+
+            AppliedTransform::RotationEuler(Vec3 { x, y, z }) => {
+                tf.rotation = prepare_rotation(coord, Quat::from_euler(EulerRot::XYZ, x, y, z));
+            }
+        }
     }
 }

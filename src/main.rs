@@ -1,11 +1,29 @@
-use bevy::prelude::*;
+#![feature(generic_const_exprs)]
+
 use bevy::color::palettes::css as pallette;
+use bevy::prelude::*;
 use bevy_rich_text3d as text3d;
 
 mod camera;
-mod mesh;
-mod ui;
+mod display;
 mod geometry;
+mod mesh;
+
+pub mod objects {
+    #[derive(bevy::prelude::Component)]
+    #[require(
+        crate::display::ui::ArrowIO,
+        crate::display::representation::ReprSettings
+    )]
+    pub struct Arrow;
+
+    #[derive(bevy::prelude::Component)]
+    #[require(
+        crate::display::ui::GroupIO,
+        crate::display::representation::ReprSettings
+    )]
+    pub struct Group;
+}
 
 fn main() {
     let mut app = App::new();
@@ -24,17 +42,13 @@ fn main() {
         }))
         .add_plugins(text3d::Text3dPlugin::default())
         .insert_resource(text3d::LoadFonts {
-            font_embedded: vec![
-                include_bytes!("../assets/FiraSans-Medium.ttf")
-            ],
+            font_embedded: vec![include_bytes!("../assets/FiraSans-Medium.ttf")],
             ..default()
         })
-        .add_plugins(ui::UiPlugins)
+        .add_plugins(display::ui::UiPlugins)
         .add_plugins(geometry::GeometryPlugin)
         .add_systems(Startup, setup)
-        .add_systems(Update, camera::pan_orbit_camera)
-        ;
-
+        .add_systems(Update, camera::pan_orbit_camera);
 
     app.run();
 }
@@ -73,12 +87,10 @@ fn setup(
     cmd.spawn((
         geometry::MainPlane,
         Mesh3d(mesh.clone()),
-        MeshMaterial3d(material.clone())
+        MeshMaterial3d(material.clone()),
     ));
 
     let axis_mesh = meshes.add(Cylinder::new(0.012, 1.0).mesh().resolution(10).segments(1));
-
-    let mut coord = geometry::CoordinateSystem::default();
 
     for (axis, color, up) in [
         (geometry::Axis::X, Color::from(pallette::RED), Vec3::Y),
@@ -115,8 +127,7 @@ fn setup(
             ..default()
         });
 
-        let ent = cmd
-            .spawn((Transform::default(), Visibility::default()))
+        cmd.spawn((axis, Transform::default(), Visibility::default()))
             .with_children(|cmd| {
                 cmd.spawn((
                     Mesh3d(axis_mesh.clone()),
@@ -148,7 +159,7 @@ fn setup(
                             Transform::from_xyz(0.0, 0.0, 0.0)
                                 .with_rotation(Quat::from_rotation_x(-std::f32::consts::TAU / 4.0)),
                         ),
-                    Visibility::default()
+                    Visibility::default(),
                 ))
                 .with_children(|cmd| {
                     cmd.spawn((
@@ -161,16 +172,13 @@ fn setup(
                             ..default()
                         },
                         Mesh3d::default(),
-                        MeshMaterial3d(text_material)
+                        MeshMaterial3d(text_material),
                     ));
                 });
-            })
-            .id();
-
-        coord.entities[axis as usize] = ent;
+            });
     }
 
-    cmd.spawn(coord);
-    cmd.spawn(geometry::Config::default());
-    cmd.spawn(ui::ArrowIO::default());
+    cmd.spawn(geometry::CoordinateSystem::default());
+    let config = cmd.spawn(display::ui::Config::default()).id();
+    cmd.spawn((objects::Arrow, display::representation::InGroup(config)));
 }
