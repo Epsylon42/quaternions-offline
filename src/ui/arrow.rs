@@ -29,7 +29,7 @@ pub fn arrow_ui(
         }
     });
 
-    ui.collapsing("Options", |ui| {
+    ui.collapsing("Settings", |ui| {
         ui.horizontal(|ui| {
             ui.label("Name: ");
             name.mutate(|name| {
@@ -47,8 +47,9 @@ pub fn arrow_ui(
         .show(ui, |ui| {
             display_position(ui, &mut *clip, ent, &mut arrow, &mut events);
             display_quaternion(ui, &mut *clip, ent, &mut arrow, &mut events);
-            display_matrix(ui, &mut *clip, ent, &mut arrow, &mut events);
             display_euler(ui, &mut *clip, ent, &mut arrow, &mut events);
+            display_matrix(ui, &mut *clip, ent, &mut arrow, &mut events);
+            display_transform_matrix(ui, &mut *clip, ent, &mut arrow, &mut events);
             // display_look(ui, &mut *clip, ent, &*coord, &mut arrow, tf.reborrow());
         });
 }
@@ -253,6 +254,81 @@ fn display_matrix(
                     let mut tmp: [String; 9] = default();
                     clip_paste(clip, &mut tmp);
                     arrow.mat = conv::transpose_mat_io(&tmp);
+                }
+                ui.end_row();
+            });
+    });
+}
+
+fn display_transform_matrix(
+    ui: &mut egui::Ui,
+    clip: &mut EguiClipboard,
+    ent: Entity,
+    arrow: &mut ArrowIO,
+    events: &mut EventWriter<ApplyTransformCommand>,
+) {
+    let display_field = |ui: &mut egui::Ui, buf: &mut String| {
+        let widget = egui::TextEdit::singleline(buf);
+        let response = ui.add(widget);
+        if response.lost_focus() {
+            *buf = buf.parse().unwrap_or(0.0).to_string();
+        }
+    };
+
+    ui.collapsing("Transform Matrix", |ui| {
+        egui::Grid::new(ent.index().to_string() + "tf_mat")
+            .num_columns(4)
+            .min_col_width(60.0)
+            .max_col_width(60.0)
+            .show(ui, |ui| {
+                display_field(ui, &mut arrow.tf_mat[0]);
+                display_field(ui, &mut arrow.tf_mat[1]);
+                display_field(ui, &mut arrow.tf_mat[2]);
+                display_field(ui, &mut arrow.tf_mat[3]);
+                ui.end_row();
+                display_field(ui, &mut arrow.tf_mat[4]);
+                display_field(ui, &mut arrow.tf_mat[5]);
+                display_field(ui, &mut arrow.tf_mat[6]);
+                display_field(ui, &mut arrow.tf_mat[7]);
+                ui.end_row();
+                display_field(ui, &mut arrow.tf_mat[8]);
+                display_field(ui, &mut arrow.tf_mat[9]);
+                display_field(ui, &mut arrow.tf_mat[10]);
+                display_field(ui, &mut arrow.tf_mat[11]);
+                ui.end_row();
+                display_field(ui, &mut arrow.tf_mat[12]);
+                display_field(ui, &mut arrow.tf_mat[13]);
+                display_field(ui, &mut arrow.tf_mat[14]);
+                display_field(ui, &mut arrow.tf_mat[15]);
+                ui.end_row();
+            });
+
+        if ui.button("Apply").clicked() {
+            events.write(ApplyTransformCommand::tf_mat(
+                ent,
+                conv::strings_to_mat4(&arrow.tf_mat, conv::MatStrMode::RowMajor),
+            ));
+        }
+
+        egui::Grid::new(ent.index().to_string() + "mat_io")
+            .num_columns(2)
+            .min_col_width(60.0)
+            .show(ui, |ui| {
+                if ui.button("Copy RM").clicked() {
+                    clip_copy(clip, &arrow.tf_mat);
+                }
+                if ui.button("Copy CM").clicked() {
+                    clip_copy(clip, &conv::transpose_mat_io(&arrow.tf_mat));
+                }
+                ui.end_row();
+
+                if ui.button("Paste RM").clicked() {
+                    clip_paste(clip, &mut arrow.tf_mat);
+                }
+                if ui.button("Paste CM").clicked() {
+                    let mut tmp: [String; 16] = default();
+                    clip_paste(clip, &mut tmp);
+                    arrow.tf_mat = conv::transpose_mat_io(&tmp);
                 }
                 ui.end_row();
             });

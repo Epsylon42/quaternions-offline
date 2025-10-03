@@ -17,6 +17,7 @@ pub struct ArrowIO {
     pub quat: [String; 4],
     pub euler: Vec3,
     pub mat: [String; 9],
+    pub tf_mat: [String; 16],
     // pub look: [String; 3],
     // pub up: Axis,
 }
@@ -28,6 +29,7 @@ impl Default for ArrowIO {
             quat: default(),
             euler: default(),
             mat: default(),
+            tf_mat: default(),
             // look: default(),
             // up: Axis::Y,
         }
@@ -66,6 +68,9 @@ pub fn system_sync_arrow_io(
 
         let mat = Mat3::from_quat(quat);
         arrow.mat = conv::mat3_to_strings(&mat, conv::MatStrMode::RowMajor);
+
+        let tf_mat = Mat4::from_scale_rotation_translation(tf.scale, tf.rotation, tf.translation);
+        arrow.tf_mat = conv::mat4_to_strings(&tf_mat, conv::MatStrMode::RowMajor);
     }
 }
 

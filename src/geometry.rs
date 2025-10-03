@@ -183,6 +183,7 @@ pub enum AppliedTransform {
     RotationQuat(Quat),
     RotationMat(Mat3),
     RotationEuler(Vec3),
+    TransformMat(Mat4),
 }
 
 #[derive(Event)]
@@ -226,6 +227,13 @@ impl ApplyTransformCommand {
             transform: AppliedTransform::RotationEuler(rot),
         }
     }
+
+    pub fn tf_mat(target: Entity, mat: Mat4) -> Self {
+        ApplyTransformCommand {
+            target,
+            transform: AppliedTransform::TransformMat(mat),
+        }
+    }
 }
 
 fn system_process_transform_commands(
@@ -267,6 +275,14 @@ fn system_process_transform_commands(
                 let num_pos = convert_position(&Mat3::IDENTITY, 1.0, coord.position_mode, tf.rotation.inverse(), tf.translation);
                 tf.rotation = convert_rotation(&coord.user2internal, Quat::from_euler(EulerRot::XYZ, x, y, z));
                 tf.translation = convert_position(&Mat3::IDENTITY, 1.0, coord.position_mode, tf.rotation, num_pos);
+            }
+
+            AppliedTransform::TransformMat(mat) => {
+                let mat = Transform::from_matrix(mat);
+
+                tf.scale = mat.scale;
+                tf.rotation = convert_rotation(&coord.user2internal, mat.rotation);
+                tf.translation = convert_position(&coord.user2internal, coord.positions_scale, coord.position_mode, tf.rotation, mat.translation);
             }
         }
     }

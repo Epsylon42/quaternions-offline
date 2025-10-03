@@ -152,18 +152,20 @@ fn system_arrows_ui(
                     cmd.entity(ent).despawn();
                 }
 
-                ui.collapsing("Settings", |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label("Name: ");
-                        name.mutate(|name| {
-                            ui.add(egui::TextEdit::singleline(name).desired_width(100.0));
+                egui::CollapsingHeader::new("Settings")
+                    .id_salt("group_settings")
+                    .show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.label("Name: ");
+                            name.mutate(|name| {
+                                ui.add(egui::TextEdit::singleline(name).desired_width(100.0));
+                            });
                         });
-                    });
 
-                    if repr_settings::repr_settings_ui(false, ui, repr.bypass_change_detection(), &computed) {
-                        repr.set_changed();
-                    }
-                });
+                        if repr_settings::repr_settings_ui(false, ui, repr.bypass_change_detection(), &computed) {
+                            repr.set_changed();
+                        }
+                    });
 
                 egui::CollapsingHeader::new("Arrows")
                     .default_open(true)
@@ -197,7 +199,6 @@ fn system_arrows_ui(
                                 arrow::arrow_ui(&mut cmd, ui, &mut clip, arrow, &mut tf_events);
                             });
                     }
-
                 }
             });
     }
